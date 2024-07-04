@@ -23,4 +23,10 @@ where
     namespace !~ 'open-cluster.*';
 ```
 
+To build it from the git repo base directory:
+```bash
+> cd dumpdb
+> podman build . -t dumpdb:latest
+```
+
 Have fun!
