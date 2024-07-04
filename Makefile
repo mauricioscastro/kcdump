@@ -1,6 +1,7 @@
 # Image URL to use all building/pushing image targets
 IMG ?= kcdump:latest
 CONTAINER_FILE ?= Containerfile
+BUILD_DIR ?= .
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -69,7 +70,7 @@ build: fmt vet ## Build manager binary.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: container-build
 container-build: test ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -f ${CONTAINER_FILE} -t ${IMG}
+	cd ${BUILD_DIR}; $(CONTAINER_TOOL) build -f ${CONTAINER_FILE} -t ${IMG}
 
 .PHONY: container-push
 container-push: ## Push docker image with the manager.

@@ -57,9 +57,8 @@ $$
   import glob
   global dir
   cluster = []
-  for p in ['.json.gz', '.json']:
-    for f in glob.iglob(dir+"/**/*"+p, recursive = True):
-        cluster.append([os.path.basename(f).replace(p,""), f])
+  for f in glob.iglob(dir+"/**/*.json.gz", recursive = True):
+    cluster.append([os.path.basename(f).replace(p,""), f])
   return cluster
 $$ language plpython3u;
 
