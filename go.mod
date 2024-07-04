@@ -10,8 +10,6 @@ require (
 	github.com/itchyny/json2yaml v0.1.4
 	github.com/mikefarah/yq/v4 v4.40.5
 	github.com/pieterclaerhout/go-waitgroup v1.0.7
-	github.com/rwtodd/Go.Sed v0.0.0-20240405174034-bb8ed5da0fd0
-	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	go.uber.org/zap v1.24.0
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 	gopkg.in/yaml.v3 v3.0.1
