@@ -3,7 +3,7 @@ from docker.io/postgres
 ENV PGDATA=/var/lib/postgresql/pgdata
 ENV POSTGRES_HOST_AUTH_METHOD=trust
 
-COPY kcdump-init.sql /docker-entrypoint-initdb.d/
+COPY dumpdb-init.sql /docker-entrypoint-initdb.d/
 
 RUN apt-get update && \
     apt-get install -y autoconf automake build-essential libtool python-dev-is-python3 postgresql-plpython3-16 jq yq && \

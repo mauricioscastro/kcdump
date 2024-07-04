@@ -57,8 +57,9 @@ $$
   import glob
   global dir
   cluster = []
-  for f in glob.iglob(dir+"/**/*.json", recursive = True):
-    cluster.append([os.path.basename(f).replace(".json",""), f])
+  for p in ['.json.gz', '.json']:
+    for f in glob.iglob(dir+"/**/*"+p, recursive = True):
+        cluster.append([os.path.basename(f).replace(p,""), f])
   return cluster
 $$ language plpython3u;
 
@@ -89,7 +90,7 @@ begin
             _    jsonb
         );
 
-        execute format('copy cluster (_) from ''%s'';', cdata.data_file);
+        execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
 
         update cluster set name = 'apiresources',
                            gv = _ ->> 'apiVersion',
