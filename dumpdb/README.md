@@ -1,6 +1,6 @@
 # dumpdb image
 ### The database part for [kcdump](https://github.com/mauricioscastro/kcdump)
-This is a extended image of the original Postgres with [init scripts](dumpdb-init.sql) that will enable the output of a `kcdump -nologs -format json_lines -gzip` to be  loaded into a ephemeral database for SQL manipulation.
+This is a extended image of the original Postgres with [init scripts](dumpdb-init.sql) that will enable the output of a `kcdump kcdump -nologs -dontSplitgv -format json_lines -gzip` to be  loaded into a ephemeral database for SQL manipulation.
 
 All the files contained in `-targetDir` directory of the kcdump command will become each a different schema named after the file name with a table called *'cluster'* and materialized views will be created one for each resource found to have at least one created object in the cluster. Meaning, there will be materialized views called *'pods_v1'*, *'namespaces_v1'* and so on. 
 
