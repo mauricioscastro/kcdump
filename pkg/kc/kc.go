@@ -16,8 +16,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/mauricioscastro/hcreport/pkg/util/log"
-	"github.com/mauricioscastro/hcreport/pkg/yjq"
+	"github.com/mauricioscastro/kcdump/pkg/util/log"
+	"github.com/mauricioscastro/kcdump/pkg/yjq"
 )
 
 const (

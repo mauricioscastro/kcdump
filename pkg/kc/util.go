@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/coreybutler/go-fsutil"
-	"github.com/mauricioscastro/hcreport/pkg/yjq"
+	"github.com/mauricioscastro/kcdump/pkg/yjq"
 	"github.com/pieterclaerhout/go-waitgroup"
 	"go.uber.org/zap"
 )

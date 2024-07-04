@@ -24,10 +24,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/mauricioscastro/hcreport/pkg/kc"
-	kcli "github.com/mauricioscastro/hcreport/pkg/kc"
-	"github.com/mauricioscastro/hcreport/pkg/util/log"
-	"github.com/mauricioscastro/hcreport/pkg/yjq"
+	"github.com/mauricioscastro/kcdump/pkg/kc"
+	kcli "github.com/mauricioscastro/kcdump/pkg/kc"
+	"github.com/mauricioscastro/kcdump/pkg/util/log"
+	"github.com/mauricioscastro/kcdump/pkg/yjq"
 )
 
 type nsExcludeList []string

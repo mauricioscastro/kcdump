@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mauricioscastro/hcreport/pkg/yjq"
+	"github.com/mauricioscastro/kcdump/pkg/yjq"
 	"github.com/rwtodd/Go.Sed/sed"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"gopkg.in/yaml.v3"
