@@ -151,7 +151,6 @@ begin
                 execute format ('create index if not exists %s_namens on %s_%s (name, namespace);', apir.name, apir.name, apir.gvname);
                 execute format ('create index if not exists %s_k on %s_%s (kind);', apir.name, apir.name, apir.gvname);
             else
-                execute format('drop materialized view if exists %s_%s', apir.name, apir.gvname);
                 execute format('
                 create materialized view if not exists %s_%s as
                 select a.name api_resource_name, a.gv, a.k kind,
