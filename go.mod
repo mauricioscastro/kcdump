@@ -2,13 +2,8 @@ module github.com/mauricioscastro/kcdump
 
 go 1.21
 
-// replace (
-// 	github.com/itchyny/gojq => github.com/mauricioscastro/gojq v0.12.132
-// 	github.com/mikefarah/yq/v4 => github.com/mauricioscastro/yq/v4 v4.35.221
-// )
-
 require (
-	github.com/coreybutler/go-fsutil v1.2.2
+	github.com/coreybutler/go-fsutil v1.2.1
 	github.com/go-resty/resty/v2 v2.13.1
 	github.com/goccy/go-json v0.10.2
 	github.com/itchyny/gojq v0.12.13
