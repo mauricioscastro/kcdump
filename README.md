@@ -36,3 +36,12 @@ With this, a big gziped json file is created. This big json is later loaded by t
 
 ### Why am I not using go client-go?
 Well, I am still learning Go and k8s development and I wanted to get really close to the underlying API calls so I decided to use [go-resty](https://github.com/go-resty/resty) and write a simpler client to deal only with the very minimun I needed to extract data from the cluster. Again, being more a DevOps guy I wanted to make things even simpler when dealing with the cluster answers, so since I am very used to jq and yq I am using [go-jq](https://github.com/itchyny/gojq) and [yq](https://github.com/mikefarah/yq) as libraries to manipulate the responses and save filtered replies with some minor changes to them. All changes pursuing the easiest way to load the resulting data into a Postgres db with [dumpdb](./dumpdb/) scripts. One filtering example is erasing all data from secrets.
+
+### Run the container version
+```bash
+> podman run --rm --name kcdump quay.io/hcreport/kcdump -h
+```
+or build it locally:
+```bash
+> make container-build IMG=kcdump
+```
