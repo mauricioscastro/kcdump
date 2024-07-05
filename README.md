@@ -15,13 +15,13 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 | dontSplitgv |	do not split groupVersion in separate files. implies dontSplitns and -format 'yaml' or 'json_lines'. ignores tgz. a big file is created with everything inside. |
 | dontSplitns | do not split namespaced items into directories with their namespace name |
 | format | output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "yaml") |
-| gvk | print group version kind with format 'gv,k' |
+| gvk | print (filtered or not) group version kind with format 'gv,k' and exit |
 | gzip | gzip output |
 | kubeconfig | kubeconfig file or read from stdin. (default "/home/user/.kube/config") |
 | logLevel | use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "fatal") |
 | nologs | do not output pod's logs |
-| ns |	print namespaces list |
-| prune | prunes targetDir after archiving. implies tgz option. if tgz option is not used it does nothing |
+| ns |	print (filtered or not) namespaces list and exit |
+| prune | prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing |
 | targetDir | target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "/home/user/.kube/kcdump") |
 | tgz | a gzipped tar file is created at targetDir level with its contents. will turn off gzip option |
 | xgvk | regex to match and exclude unwanted groupVersion and kind. format is 'gv,k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk metrics.\*,Pod.\*. can be used multiple times |

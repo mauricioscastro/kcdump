@@ -72,7 +72,7 @@ func main() {
 	flag.BoolVar(&nologs, "nologs", false, "do not output pod's logs")
 	flag.BoolVar(&gzip, "gzip", false, "gzip output")
 	flag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option.")
-	flag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port_data/ after archiving. implies tgz option. if tgz option is not used it does nothing.")
+	flag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing.")
 	flag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit")
 	flag.BoolVar(&gvk, "gvk", false, "print (filtered or not) group version kind with format 'gv,k' and exit")
 	flag.BoolVar(&dontsplitns, "dontSplitns", false, "do not split namespaced items into directories with their namespace name")
