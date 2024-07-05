@@ -447,7 +447,7 @@ func writeTextFile(path string, contents string, gz bool, format int) error {
 		if contents, err = yjq.Y2JC(contents); err != nil {
 			return err
 		}
-		if contents, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";"") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";"  ")`, contents); err != nil {
+		if contents, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";" ") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";" ") | (.. | strings) |= gsub("\r";" ") | (.. | strings) |= gsub("\b";" ") | (.. | strings) |= gsub("\f";" ")`, contents); err != nil {
 			return err
 		}
 	}
