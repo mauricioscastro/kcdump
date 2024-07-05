@@ -23,7 +23,7 @@ import (
 )
 
 // cmd exec in pod
-// curl -v -XPOST  -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: kubectl/4.11.0 (linux/amd64) kubernetes/262ac9c" -H "Authorization: Bearer <masked>" 'https://api.bba.brazilsouth.aroapp.io:6443/api/v1/namespaces/exec/pods/shell-demo/exec?command=ls&container=loop&stderr=true&stdout=true'
+// 'https://cluster:443/api/v1/namespaces/exec/pods/shell-demo/exec?command=ls&container=loop&stderr=true&stdout=true'
 
 const (
 	YAML               int = 0
@@ -228,16 +228,6 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if err = writeTextFile(path+"version.yaml", version, _gz, format); err != nil {
 		return err
 	}
-	if len(dumpWorkerErrors.Load().([]error)) > 0 {
-		var collectedErrors strings.Builder
-		for _, e := range dumpWorkerErrors.Load().([]error) {
-			collectedErrors.WriteString(e.Error())
-			collectedErrors.WriteString("\n")
-		}
-		if collectedErrors.Len() > 0 {
-			return errors.New(collectedErrors.String())
-		}
-	}
 	if tgz {
 		tgzpath := path[:len(path)-1] + ".tar"
 		if err = archive(path, tgzpath); err != nil {
@@ -294,6 +284,16 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		}
 		if nologs {
 			os.Remove(path)
+		}
+		if len(dumpWorkerErrors.Load().([]error)) > 0 {
+			var collectedErrors strings.Builder
+			for _, e := range dumpWorkerErrors.Load().([]error) {
+				collectedErrors.WriteString(e.Error())
+				collectedErrors.WriteString("\n")
+			}
+			if collectedErrors.Len() > 0 {
+				return errors.New(collectedErrors.String())
+			}
 		}
 	}
 	return nil
