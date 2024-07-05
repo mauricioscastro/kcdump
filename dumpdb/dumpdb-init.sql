@@ -1,8 +1,5 @@
 create extension if not exists plpython3u;
 
-create schema if not exists f;
-set search_path to f;
-
 create or replace function jp(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns setof jsonb
     language sql
@@ -35,9 +32,9 @@ declare
     v record;
 begin
     for v in
-       select schemaname, matviewname from pg_matviews where matviewname not in ('api_resources', 'version')
+       select matviewname from pg_matviews
     loop
-        execute format('drop materialized view %s.%s', v.schemaname, v.matviewname);
+        execute format('drop materialized view %s', v.matviewname);
     end loop;
 end;
 $$;
@@ -67,106 +64,121 @@ create or replace function load_cluster_data(dir text)
     language plpgsql as
 $$
 declare
-    cdata f.cluster_data;
+    cdata cluster_data;
     apir record;
 begin
-    perform f.clean_views();
+    perform clean_views();
+    drop table if exists cluster;
+
+    create table if not exists cluster
+    (
+        id       text,
+        api_name text,
+        api_gv   text,
+        api_k    text,
+        _        jsonb
+    );
+
+    --
+    -- load kcdump files into cluster table
+    --
     for cdata in
-        select * from f.ls_cluster_data(dir)
+        select * from ls_cluster_data(dir)
     loop
-        execute format('create schema if not exists %s;', cdata.cluster);
-        execute format('set search_path to %s;', cdata.cluster);
-
-        drop materialized view if exists api_resources;
-        drop materialized view if exists version;
-        drop table if exists cluster;
-
-        create table if not exists cluster
-        (
-            name text,
-            gv   text,
-            k    text,
-            _    jsonb
-        );
-
         execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
 
-        update cluster set name = 'apiresources',
-                           gv = _ ->> 'apiVersion',
-                           k = replace(_ ->> 'kind', 'List', '')
-        where _ ->> 'kind' = 'APIResourceList';
+        update cluster set id = cdata.cluster,
+                           api_name = 'apiresources',
+                           api_gv = _ ->> 'apiVersion',
+                           api_k = replace(_ ->> 'kind', 'List', '')
+        where _ ->> 'kind' = 'APIResourceList' and id is null;
 
-        update cluster set name = 'version',
-                           gv = 'v1',
-                           k = 'Version'
-        where _ ?& array['buildDate', 'hcrDate'];
+        update cluster set id = cdata.cluster,
+                           api_name = 'versions',
+                           api_gv = 'v1',
+                           api_k = 'Version'
+        where _ ?& array['buildDate', 'dumpDate'] and id is null;
 
-        update cluster set name = f.jptxtone(_,'$.items[0].metadata.annotations.apiResourceName'),
-                           gv = _ ->> 'apiVersion',
-                           k = replace(_ ->> 'kind', 'List', '')
-        where name is null;
+        update cluster set id = cdata.cluster,
+                           api_name = jptxtone(_,'$.items[0].metadata.annotations.apiResourceName'),
+                           api_gv = _ ->> 'apiVersion',
+                           api_k = replace(_ ->> 'kind', 'List', '')
+        where api_name is null and id is null;
+    end loop;
 
-        create index if not exists cluster_gv_name on cluster (name, gv);
-        create index if not exists cluster_k on cluster (k);
+    create index if not exists cluster_id_gv_name on cluster (id, api_name, api_gv);
+    create index if not exists cluster_k on cluster (api_k);
 
-        create materialized view if not exists api_resources as
-        select _ ->> 'name'                                     name,
-               _ ->> 'groupVersion'                             gv,
-               _ ->> 'kind'                                     k,
-               _ ->> 'namespaced'                               namespaced,
-               f.jsonb_array_to_text_array(f.jp(_, '$.shortNames')) short_names,
-               f.jsonb_array_to_text_array(f.jp(_, '$.verbs'))      verbs
-        from (select f.jp(_, '$.items[*]') _ from cluster where name = 'apiresources');
+    --
+    -- create basic api_resources and version views
+    --
+    create materialized view if not exists api_resources as
+    select id                                                            cluster_id,
+           _ ->> 'name'                                                  api_name,
+           _ ->> 'groupVersion'                                          api_gv,
+           _ ->> 'kind'                                                  api_k,
+           _ ->> 'namespaced'                                            namespaced,
+           jsonb_array_to_text_array(jp(_, '$.shortNames')) short_names,
+           jsonb_array_to_text_array(jp(_, '$.verbs'))      verbs
+    from (select jp(_, '$.items[*]') _, id from cluster where api_name = 'apiresources');
 
-        create materialized view if not exists version as
-        select
-            _ ->> 'hcrDate' hcr_date,
-            _ ->> 'major' major,
-            _ ->> 'minor' minor,
-            _ ->> 'compiler' compiler,
-            _ ->> 'platform' platform,
-            _ ->> 'buildDate' build_date,
-            _ ->> 'goVersion' go_version,
-            _ ->> 'gitCommit' git_commit,
-            _ ->> 'gitVersion' git_version,
-            _ ->> 'gitTreeState' git_tree_state
-        from  cluster where name = 'version' and k = 'Version';
+    create index if not exists apiresources_clnamegv on api_resources (cluster_id, api_name, api_gv);
+    create index if not exists apiresources_k on api_resources (api_k);
 
-        for apir in
-            select a.name, a.gv, a.namespaced,  replace(replace(replace(a.gv, '-', '_'), '/', '_'),'.','_') gvname from api_resources a join cluster c on a.name = c.name and a.gv = c.gv
-        loop
-            if apir.namespaced then
-                execute format('
-                create materialized view if not exists %s_%s as
-                select a.name api_resource_name, a.gv, a.k kind,
-                       f.jp(c._, ''$.items[*].metadata.name'')->>0 name,
-                       f.jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
-                       f.jp(c._, ''$.items[*]'') _
-                       from api_resources a
-                join cluster c on a.name = c.name and a.gv = c.gv
-                where a.name=''%s'' and a.gv=''%s'';
-                ', apir.name, apir.gvname, apir.name, apir.gv);
-                execute format ('create index if not exists %s_apinamegv on %s_%s (api_resource_name, gv);', apir.name, apir.name, apir.gvname);
-                execute format ('create index if not exists %s_namens on %s_%s (name, namespace);', apir.name, apir.name, apir.gvname);
-                execute format ('create index if not exists %s_k on %s_%s (kind);', apir.name, apir.name, apir.gvname);
-            else
-                execute format('
-                create materialized view if not exists %s_%s as
-                select a.name api_resource_name, a.gv, a.k kind,
-                       f.jp(c._, ''$.items[*].metadata.name'')->>0 name,
-                       f.jp(c._, ''$.items[*]'') _
-                       from api_resources a
-                join cluster c on a.name = c.name and a.gv = c.gv
-                where a.name=''%s'' and a.gv=''%s'';
-                ', apir.name, apir.gvname, apir.name, apir.gv);
-                execute format ('create index if not exists %s_apinamegv on %s_%s (api_resource_name, gv);', apir.name, apir.name, apir.gvname);
-                execute format ('create index if not exists %s_name on %s_%s (name);', apir.name, apir.name, apir.gvname);
-                execute format ('create index if not exists %s_k on %s_%s (kind);', apir.name, apir.name, apir.gvname);
-            end if;
-        end loop;
+    create materialized view if not exists version as
+    select
+        id                      cluster_id,
+        _ ->> 'dumpDate'        dump_date,
+        _ ->> 'major'           major,
+        _ ->> 'minor'           minor,
+        _ ->> 'compiler'        compiler,
+        _ ->> 'platform'        platform,
+        _ ->> 'buildDate'       build_date,
+        _ ->> 'goVersion'       go_version,
+        _ ->> 'gitCommit'       git_commit,
+        _ ->> 'gitVersion'      git_version,
+        _ ->> 'gitTreeState'    git_tree_state
+    from  cluster where api_name = 'versions' and api_k = 'Version';
+
+    --
+    -- create views for all api resources with at least one object found for all clusters 
+    --
+    for apir in
+        select distinct
+            a.api_name, a.api_gv, a.namespaced, replace(replace(replace(a.api_gv, '-', '_'), '/', '_'),'.','_') gvname
+        from
+            api_resources a join cluster c on a.api_name = c.api_name and a.api_gv = c.api_gv
+    loop
+        if apir.namespaced then
+            execute format('
+            create materialized view if not exists %s_%s as
+            select c.id cluster_id, a.api_name, a.api_gv gv, a.api_k kind,
+                   jp(c._, ''$.items[*].metadata.name'')->>0 name,
+                   jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
+                   jp(c._, ''$.items[*]'') _
+                   from api_resources a
+            join cluster c on a.api_name = c.api_name and a.api_gv = c.api_gv
+            where a.api_name=''%s'' and a.api_gv=''%s'';
+            ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
+            execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
+            execute format ('create index if not exists %s_namens on %s_%s (name, namespace);', apir.api_name, apir.api_name, apir.gvname);
+            execute format ('create index if not exists %s_k on %s_%s (kind);', apir.api_name, apir.api_name, apir.gvname);
+        else
+            execute format('
+            create materialized view if not exists %s_%s as
+            select c.id cluster_id, a.api_name, a.api_gv gv, a.api_k kind,
+                   jp(c._, ''$.items[*].metadata.name'')->>0 name,
+                   jp(c._, ''$.items[*]'') _
+                   from api_resources a
+            join cluster c on a.api_name = c.api_name and a.api_gv = c.api_gv
+            where a.api_name=''%s'' and a.api_gv=''%s'';
+            ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
+            execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
+            execute format ('create index if not exists %s_name on %s_%s (name);', apir.api_name, apir.api_name, apir.gvname);
+            execute format ('create index if not exists %s_k on %s_%s (kind);', apir.api_name, apir.api_name, apir.gvname);
+        end if;
     end loop;
 end;
 $$;
 
--- select f.load_cluster_data('/kcdump');
-
+-- select load_cluster_data('/kcdump');

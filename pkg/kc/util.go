@@ -222,7 +222,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if err != nil {
 		return err
 	}
-	if version, err = yjq.YqEval(`. += {"hcrDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
+	if version, err = yjq.YqEval(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
 		return err
 	}
 	if err = writeTextFile(path+"version.yaml", version, _gz, format); err != nil {
