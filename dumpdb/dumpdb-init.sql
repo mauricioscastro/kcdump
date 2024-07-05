@@ -152,13 +152,12 @@ begin
         if apir.namespaced then
             execute format('
             create materialized view if not exists %s_%s as
-            select c.id cluster_id, a.api_name, a.api_gv gv, a.api_k kind,
+            select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
                    jp(c._, ''$.items[*].metadata.name'')->>0 name,
                    jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
                    jp(c._, ''$.items[*]'') _
-                   from api_resources a
-            join cluster c on a.api_name = c.api_name and a.api_gv = c.api_gv
-            where a.api_name=''%s'' and a.api_gv=''%s'';
+                   from cluster c 
+            where c.api_name=''%s'' and c.api_gv=''%s'';
             ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
             execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
             execute format ('create index if not exists %s_namens on %s_%s (name, namespace);', apir.api_name, apir.api_name, apir.gvname);
@@ -166,12 +165,11 @@ begin
         else
             execute format('
             create materialized view if not exists %s_%s as
-            select c.id cluster_id, a.api_name, a.api_gv gv, a.api_k kind,
+            select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
                    jp(c._, ''$.items[*].metadata.name'')->>0 name,
                    jp(c._, ''$.items[*]'') _
-                   from api_resources a
-            join cluster c on a.api_name = c.api_name and a.api_gv = c.api_gv
-            where a.api_name=''%s'' and a.api_gv=''%s'';
+                   from cluster c
+            where c.api_name=''%s'' and c.api_gv=''%s'';
             ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
             execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
             execute format ('create index if not exists %s_name on %s_%s (name);', apir.api_name, apir.api_name, apir.gvname);
