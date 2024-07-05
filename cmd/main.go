@@ -113,6 +113,7 @@ func dump() int {
 		}
 		// fmt.Println("namespace")
 		fmt.Println(n)
+		return 0
 	}
 	if gvk {
 		g, e := kc.ApiResources()
@@ -132,17 +133,16 @@ func dump() int {
 		}
 		// fmt.Println("groupVersion,kind")
 		fmt.Println(g)
+		return 0
 	}
-	if !ns && !gvk {
-		outputfmt, e := kcli.FormatCodeFromString(format)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", e.Error())
-			return 7
-		}
-		if e = kc.Dump(targetDir, xns, xgvk, nologs, gzip, tgz, prune, !dontsplitns, !dontsplitgv, outputfmt, 0, nil); e != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", e.Error())
-			return 9
-		}
+	outputfmt, e := kcli.FormatCodeFromString(format)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
+		return 7
+	}
+	if e = kc.Dump(targetDir, xns, xgvk, nologs, gzip, tgz, prune, !dontsplitns, !dontsplitgv, outputfmt, 0, nil); e != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
+		return 9
 	}
 	return 0
 }
