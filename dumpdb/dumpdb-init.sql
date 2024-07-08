@@ -10,13 +10,13 @@ create or replace function jptxt(target jsonb, path jsonpath, vars jsonb default
     returns setof text
     language sql
     immutable strict parallel safe as
-'select jsonb_path_query(target, path, vars, silent) #>> ''{}''';
+'select replace(jsonb_path_query(target, path, vars, silent) #>> '{}', '{}', '')';
 
 create or replace function jptxtone(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns text
     language sql
     immutable strict parallel safe as
-'select jsonb_path_query(target, path, vars, silent) #>> ''{}'' limit 1';
+'select replace(jsonb_path_query(target, path, vars, silent) #>> '{}', '{}', '') limit 1';
 
 create or replace function jsonb_array_to_text_array(_js jsonb)
     returns text[]
