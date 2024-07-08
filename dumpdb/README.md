@@ -14,9 +14,9 @@ Having loaded the cluster data you will be able to issue queries like:
 select cluster_id,
        name,
        namespace,
-       jptxt(_, '$.spec.containers[*].resources')      resources,
-       jptxt(_, '$.spec.containers[*].readinessProbe') readiness,
-       jptxt(_, '$.spec.containers[*].livenessProbe')  liveness
+       jp(_, '$.spec.containers[*].resources')      resources,
+       jp(_, '$.spec.containers[*].readinessProbe') readiness,
+       jp(_, '$.spec.containers[*].livenessProbe')  liveness
 from
     pods_v1
 where
@@ -25,6 +25,7 @@ where
 order by
     namespace, name;
 ```
+Where *'jp'* function is an alias for Postgres' *'jsonb_path_query'* defined in the [init script](dumpdb-init.sql).
 
 To build it from the git repo base directory:
 ```bash
