@@ -6,6 +6,12 @@ create or replace function jp(target jsonb, path jsonpath, vars jsonb default '{
     immutable strict parallel safe as
 'select jsonb_path_query(target, path, vars, silent)';
 
+create or replace function jpone(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
+    returns jsonb
+    language sql
+    immutable strict parallel safe as
+'select jsonb_path_query(target, path, vars, silent) limit 1';
+
 create or replace function jptxt(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns setof text
     language sql
