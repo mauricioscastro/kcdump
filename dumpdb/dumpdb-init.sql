@@ -24,6 +24,15 @@ create or replace function jsonb_array_to_text_array(_js jsonb)
     immutable strict parallel safe as
 'select array(select jsonb_array_elements_text(_js))';
 
+create or replace function toyaml(js jsonb) returns text as
+$$
+  import json
+  import yaml
+  global js
+  if js == None or js == "{}": return ""
+  return yaml.dump(json.loads(js))
+$$ language plpython3u;
+
 create or replace function clean_views()
     returns void
     language plpgsql as
