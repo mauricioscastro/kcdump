@@ -16,13 +16,13 @@ create or replace function jptxt(target jsonb, path jsonpath, vars jsonb default
     returns setof text
     language sql
     immutable strict parallel safe as
-'select replace(jsonb_path_query(target, path, vars, silent) #>> '{}', '{}', '')';
+'select replace(jsonb_path_query(target, path, vars, silent) #>> ''{}'', ''{}'', '''')';
 
 create or replace function jptxtone(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns text
     language sql
     immutable strict parallel safe as
-'select replace(jsonb_path_query(target, path, vars, silent) #>> '{}', '{}', '') limit 1';
+'select replace(jsonb_path_query(target, path, vars, silent) #>> ''{}'', ''{}'', '''') limit 1';
 
 create or replace function jsonb_array_to_text_array(_js jsonb)
     returns text[]
@@ -156,7 +156,7 @@ begin
     from  cluster where api_name = 'versions' and api_k = 'Version';
 
     --
-    -- create views for all api resources with at least one object found for all clusters 
+    -- create views for all api resources with at least one object found for all clusters
     --
     for apir in
         select distinct
@@ -171,7 +171,7 @@ begin
                    jp(c._, ''$.items[*].metadata.name'')->>0 name,
                    jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
                    jp(c._, ''$.items[*]'') _
-                   from cluster c 
+                   from cluster c
             where c.api_name=''%s'' and c.api_gv=''%s'';
             ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
             execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
