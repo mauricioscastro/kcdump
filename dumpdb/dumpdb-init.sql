@@ -35,7 +35,7 @@ $$
   import json
   import yaml
   global js
-  if js == None or js == "{}": return ""
+  if js == None or js == "{}" or js == "[]": return ""
   return yaml.dump(json.loads(js))
 $$ language plpython3u;
 
