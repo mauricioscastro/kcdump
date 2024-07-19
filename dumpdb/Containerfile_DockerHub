@@ -1,0 +1,13 @@
+from docker.io/postgres
+
+ENV PGDATA=/var/lib/postgresql/pgdata
+ENV POSTGRES_HOST_AUTH_METHOD=trust
+
+COPY dumpdb-init.sql /docker-entrypoint-initdb.d/
+
+RUN /usr/local/bin/docker-ensure-initdb.sh
+
+USER postgres
+
+WORKDIR /var/lib/postgresql
+

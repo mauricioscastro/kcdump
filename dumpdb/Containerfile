@@ -1,13 +1,20 @@
-from docker.io/postgres
+from registry.access.redhat.com/rhel9/postgresql-16
 
-ENV PGDATA=/var/lib/postgresql/pgdata
-ENV POSTGRES_HOST_AUTH_METHOD=trust
+ENV PGDATA=/var/lib/pgsql/pgdata 
+ENV POSTGRESQL_USER=postgres 
+ENV POSTGRESQL_PASSWORD=postgres 
+ENV POSTGRESQL_DATABASE=postgres
 
-COPY dumpdb-init.sql /docker-entrypoint-initdb.d/
+COPY dumpdb-init.sql /opt/app-root/src/
 
-RUN /usr/local/bin/docker-ensure-initdb.sh
+RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
+    pg_ctl start -o "-h ''" && \
+    psql -c "ALTER ROLE postgres WITH ENCRYPTED PASSWORD ''" && \
+    psql -f /opt/app-root/src/dumpdb-init.sql && \
+    pg_ctl stop && \
+    sed -ie 's;host  *all  *all  *::1/128.*;host    all             all             0.0.0.0/0               trust;g' /var/lib/pgsql/pgdata/pg_hba.conf  && \
+    echo "listen_addresses = '*'" >> /var/lib/pgsql/pgdata/postgresql.conf && \
+    sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf 
 
-USER postgres
-
-WORKDIR /var/lib/postgresql
+WORKDIR /var/lib/pgsql
 
