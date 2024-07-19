@@ -1,5 +1,3 @@
-create extension if not exists plpython3u;
-
 create or replace function jp(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns setof jsonb
     language sql
@@ -30,15 +28,6 @@ create or replace function jsonb_array_to_text_array(_js jsonb)
     immutable strict parallel safe as
 'select array(select jsonb_array_elements_text(_js))';
 
-create or replace function toyaml(js jsonb) returns text as
-$$
-  import json
-  import yaml
-  global js
-  if js == None or js == "{}" or js == "[]": return ""
-  return yaml.dump(json.loads(js))
-$$ language plpython3u;
-
 create or replace function clean_views()
     returns void
     language plpgsql as
@@ -54,32 +43,12 @@ begin
 end;
 $$;
 
-drop function if exists ls_cluster_data;
-drop type if exists cluster_data;
-
-create type cluster_data as
-(
-    cluster  text,
-    data_file text
-);
-
-create or replace function ls_cluster_data(dir text) returns setof cluster_data as
-$$
-  import os
-  import glob
-  global dir
-  cluster = []
-  for f in glob.iglob(dir+"/**/*.json.gz", recursive = True):
-    cluster.append([os.path.basename(f).replace(".json.gz",""), f])
-  return cluster
-$$ language plpython3u;
-
 create or replace function load_cluster_data(dir text)
     returns void
     language plpgsql as
 $$
 declare
-    cdata cluster_data;
+    cdata record;
     apir record;
 begin
     perform clean_views();
@@ -98,7 +67,8 @@ begin
     -- load kcdump files into cluster table
     --
     for cdata in
-        select * from ls_cluster_data(dir)
+       select replace(pg_ls_dir, '.json.gz', '') cluster, dir || '/' || pg_ls_dir data_file from (
+        select * from pg_ls_dir(dir) where pg_ls_dir like '%.json.gz')
     loop
         execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
 

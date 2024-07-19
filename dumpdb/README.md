@@ -27,16 +27,6 @@ order by
 ```
 Where *'jp'* function is an alias for Postgres' *'jsonb_path_query'* defined in the [init script](dumpdb-init.sql).
 
-There is a convenient *'toyaml'* function:
-```sql
--- (...)
-       toyaml(jpone(_, '$.spec.containers[*].resources')) resources,
-       toyaml(jpone(_, '$.spec.containers[*].readinessProbe')) readiness,
-       toyaml(jpone(_, '$.spec.containers[*].livenessProbe')) liveness,
-       toyaml(jpone(_, '$.metadata.ownerReferences')) owner
--- (...)
-```
-
 To build it from the git repo base directory:
 ```bash
 > cd dumpdb

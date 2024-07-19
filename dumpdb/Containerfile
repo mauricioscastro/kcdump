@@ -5,9 +5,7 @@ ENV POSTGRES_HOST_AUTH_METHOD=trust
 
 COPY dumpdb-init.sql /docker-entrypoint-initdb.d/
 
-RUN apt-get update && \
-    apt-get install -y autoconf automake build-essential libtool python-dev-is-python3 postgresql-plpython3-16 jq yq && \
-    /usr/local/bin/docker-ensure-initdb.sh
+RUN /usr/local/bin/docker-ensure-initdb.sh
 
 USER postgres
 
