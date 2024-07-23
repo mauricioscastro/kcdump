@@ -34,7 +34,7 @@ type nsExcludeList []string
 type gvkExcludeList []string
 
 var (
-	logger = log.Logger().Named("hcr")
+	logger = log.Logger().Named("kcdump.main")
 
 	// cli dump options
 	home        string

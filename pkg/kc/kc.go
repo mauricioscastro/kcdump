@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	logger = log.Logger().Named("hcr.kc")
+	logger = log.Logger().Named("kcdump")
 	cache  sync.Map
 )
 
