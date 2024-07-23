@@ -94,6 +94,7 @@ func NewKc() Kc {
 		host := os.Getenv("KUBERNETES_SERVICE_HOST")
 		port := os.Getenv("KUBERNETES_SERVICE_PORT_HTTPS")
 		if host != "" && port != "" {
+			host = "https://" + host
 			logger.Debug("kc will auth with token and env KUBERNETES_SERVICE_...")
 			logger.Debug("", zap.String("host:port from env", host+":"+port))
 			return NewKcWithToken(host+":"+port, string(token))
@@ -215,8 +216,8 @@ func newKc() Kc {
 
 func (kc *kc) SetCluster(cluster string) Kc {
 	kc.cluster = cluster
-	kc.client.SetBaseURL(cluster)
-	cache.Store(cluster, cacheEntry{""})
+	kc.client.SetBaseURL(kc.cluster)
+	cache.Store(kc.cluster, cacheEntry{""})
 	return kc
 }
 
