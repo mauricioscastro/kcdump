@@ -197,7 +197,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		return err
 	}
 	dumpWorkerErrors.Store(make([]error, 0))
-	wg := waitgroup.NewWaitGroup(3)
+	wg := waitgroup.NewWaitGroup(poolSize)
 	for _, le := range apiList {
 		_le := strings.Split(le, ";")
 		name := _le[0]
