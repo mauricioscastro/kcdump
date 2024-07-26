@@ -55,7 +55,7 @@ type (
 		Api() string
 		Ns() (string, error)
 		ApiResources() (string, error)
-		Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, progress func()) error
+		Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, progress func()) error
 		setCert(cert []byte, key []byte)
 		response(resp *resty.Response, yamlOutput bool) (string, error)
 		send(method string, apiCall string, body string) (string, error)

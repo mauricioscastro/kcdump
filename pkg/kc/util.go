@@ -38,6 +38,7 @@ var (
 	DefaultCleaningQuery  = `.items = [.items[] | del(.metadata.managedFields) | del(.metadata.uid) | del (.metadata.creationTimestamp) | del (.metadata.generation) | del(.metadata.resourceVersion) | del (.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])] | del(.metadata)`
 	apiAvailableListQuery = `with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | .name + ";" + .groupVersion + ";" + .namespaced`
 	dumpWorkerErrors      atomic.Value
+	bigSizedReplyListLock sync.Mutex
 )
 
 func (kc *kc) Ns() (string, error) {
@@ -117,7 +118,7 @@ func apiResourcesResponseTransformer(kc Kc) (string, error) {
 // the threads can be expressed through poolsize (0 or -1 to unbound it).
 // progress will be called at the end. You need to add thread safety mechanisms
 // to the code inside progress func().
-func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, progress func()) error {
+func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, progress func()) error {
 	_gz := gz
 	if tgz || !splitgv { // only gzip in the end after archiving or after concatenating
 		_gz = false
@@ -143,6 +144,19 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	os.Remove(path + ".json.gz")
 	os.Remove(path + ".yaml.gz")
 	path = path + "/"
+	// big things to retrieve serially
+	// name.gv -> chunk size to use
+	bigSizedReplyMap := map[string]int{
+		"packagemanifests.packages.operators.coreos.com/v1": 1,
+		"configmaps.v1": 1,
+		"apirequestcounts.apiserver.openshift.io/v1": 5,
+		// "images.image.openshift.io/v1":               10,
+		// "events.v1":                                         10,
+		// "events.events.k8s.io/v1":                           10,
+		"customresourcedefinitions.apiextensions.k8s.io/v1": 10,
+		// "pods.v1": 10,
+		// "machineconfigs.machineconfiguration.openshift.io/v1": 5,
+	}
 	//
 	// retrieve gvk list and write
 	//
@@ -191,35 +205,44 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		return err
 	}
 	//
-	// retrieve everything else in parallel
+	// retrieve everything else
 	//
 	apiList, err := yjq.Eval2List(yjq.YqEval, apiAvailableListQuery, apis)
 	if err != nil {
 		return err
 	}
+	//
+	// retrieve big guys first serially
+	//
+	for i, le := range apiList {
+		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
+		if bigSizedReplyChunkSize, isBig := bigSizedReplyMap[name+"."+gv]; isBig {
+			chunkSize = bigSizedReplyChunkSize
+			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
+			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, chunkSize, progress)
+			logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
+			apiList = slices.Delete(apiList, i, i+1)
+		}
+	}
+	//
+	// retrieve everything else in parallel
+	//
 	dumpWorkerErrors.Store(make([]error, 0))
 	wg := waitgroup.NewWaitGroup(poolSize)
 	for _, le := range apiList {
-		_le := strings.Split(le, ";")
-		name := _le[0]
-		gv := _le[1]
+		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
 		if name == "namespaces" && gv == kc.Version() {
 			continue
-		}
-		namespaced, _ := strconv.ParseBool(_le[2])
-		baseName := "/apis/"
-		if gv == kc.Version() {
-			baseName = "/api/"
 		}
 		logger.Debug("KcDump", zap.String("baseName", baseName), zap.String("name", name), zap.Bool("namespaced", namespaced), zap.String("gv", gv))
 		wg.BlockAdd()
 		go func() {
 			defer wg.Done()
-			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, progress)
+			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, chunkSize, progress)
 		}()
 	}
 	wg.Wait()
-	if err = joinChunks(path, format); err != nil {
+	if err = joinChunks(path, format, _gz); err != nil {
 		return err
 	}
 	version, err := kc.Get("/version")
@@ -302,22 +325,34 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	return nil
 }
 
-func writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, progress func()) error {
+func getApiAvailableListQueryValues(kcVer string, listEntry string) (string, string, bool, string) {
+	le := strings.Split(listEntry, ";")
+	name := le[0]
+	gv := le[1]
+	namespaced, _ := strconv.ParseBool(le[2])
+	baseName := "/apis/"
+	if gv == kcVer {
+		baseName = "/api/"
+	}
+	return name, gv, namespaced, baseName
+}
+
+func writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, progress func()) error {
 	if progress != nil {
 		defer progress()
 	}
-	logLine := fmt.Sprintf("writeResourceList: baseName=%s name=%s  gv=%s namespaced=%t", baseName, name, gv, namespaced)
+	logLine := fmt.Sprintf("writeResourceList: baseName=%s name=%s gv=%s namespaced=%t", baseName, name, gv, namespaced)
 	kc := NewKc()
 	gvName := strings.ReplaceAll(gv, "/", "_")
 	gvName = strings.ReplaceAll(gvName, ".", "_")
 	fileName := name + "." + gvName + ".yaml"
 	formatResourceContentSep := ""
-	chunkSize := 50
 	listKind := ""
 	if format == JSON || format == JSON_PRETTY {
 		formatResourceContentSep = ","
 	}
-	logger.Info(logLine)
+	logger.Info("starting " + logLine)
+	defer logger.Info("finishing " + logLine)
 	// start getting chunked list
 	for ctk := ""; ; {
 		apiResources, err := kc.
@@ -405,38 +440,44 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 	return nil
 }
 
-func joinChunks(path string, format int) error {
+func joinChunks(path string, format int, gz bool) error {
+	logger.Debug("start joining chunks")
+	defer logger.Debug("finished joining chunks")
 	return filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
-			if strings.HasSuffix(p, ".chunk") {
-				finalFile := strings.Replace(p, ".chunk", "", 1)
-				if format != YAML {
-					finalFile = strings.Replace(finalFile, ".yaml", ".json", 1)
+		if !info.IsDir() && strings.HasSuffix(p, ".chunk") {
+			logger.Debug("joining chunks for " + p)
+			finalFile := strings.Replace(p, ".chunk", "", 1)
+			if format != YAML {
+				finalFile = strings.Replace(finalFile, ".yaml", ".json", 1)
+			}
+			kind, name, gv := getApiListHeaderFromFileName(finalFile)
+			switch format {
+			case JSON_LINES, JSON_LINES_WRAPPED:
+				if err := fsutil.Move(p, finalFile); err != nil {
+					return err
 				}
-				kind, name, gv := getApiListHeaderFromFileName(finalFile)
-				switch format {
-				case JSON_LINES, JSON_LINES_WRAPPED:
-					if err := fsutil.Move(p, finalFile); err != nil {
+				if gz {
+					if err = gzip(finalFile); err != nil {
 						return err
 					}
-				case YAML:
-					header := "kind: %s\napiVersion: %s\nmetadata:\n  apiName: %s\nitems:\n"
-					if err = writeFinalFile(p, finalFile, header, kind, gv, name, ""); err != nil {
-						return err
-					}
-				case JSON:
-					header := `{"kind":"%s","apiVersion":"%s","metadata":{"apiName":"%s"},"items":[`
-					if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}"); err != nil {
-						return err
-					}
-				case JSON_PRETTY:
-					header := "{\n  \"kind\": \"%s\",\n  \"apiVersion\": \"%s\",\n  \"metadata\": {\n    \"apiName\": \"%s\"\n  },\n  \"items\": [\n"
-					if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}"); err != nil {
-						return err
-					}
+				}
+			case YAML:
+				header := "kind: %s\napiVersion: %s\nmetadata:\n  apiName: %s\nitems:\n"
+				if err = writeFinalFile(p, finalFile, header, kind, gv, name, "", gz); err != nil {
+					return err
+				}
+			case JSON:
+				header := `{"kind":"%s","apiVersion":"%s","metadata":{"apiName":"%s"},"items":[`
+				if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}", gz); err != nil {
+					return err
+				}
+			case JSON_PRETTY:
+				header := "{\n  \"kind\": \"%s\",\n  \"apiVersion\": \"%s\",\n  \"metadata\": {\n    \"apiName\": \"%s\"\n  },\n  \"items\": [\n"
+				if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}", gz); err != nil {
+					return err
 				}
 			}
 		}
@@ -444,7 +485,7 @@ func joinChunks(path string, format int) error {
 	})
 }
 
-func writeFinalFile(chunkFile string, finalFile string, header string, kind string, gv string, name string, tail string) error {
+func writeFinalFile(chunkFile string, finalFile string, header string, kind string, gv string, name string, tail string, gz bool) error {
 	f, err := os.OpenFile(finalFile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -459,6 +500,11 @@ func writeFinalFile(chunkFile string, finalFile string, header string, kind stri
 	}
 	if _, err = f.WriteString(tail); err != nil {
 		return err
+	}
+	if gz {
+		if err = gzip(finalFile); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -517,6 +563,19 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 			return "", err
 		}
 	}
+	if name == "packagemanifests" && gv == "packages.operators.coreos.com/v1" {
+		cleanApiResource, err = yjq.YqEval(`with(.items[].status.channels[].currentCSVDesc; del(.description) | del (.annotations.alm-examples) | del(.annotations."operatorframework.io/initialization-resource") | del(.annotations."operatorframework.io/suggested-namespace-template"))`, cleanApiResource)
+		if err != nil {
+			return "", err
+		}
+		// logger.Info("packagemanifests cleaned")
+	}
+	if name == "configmaps" {
+		cleanApiResource, err = yjq.YqEval(`del(.items[].metadata.annotations."kubernetes.io/description")`, cleanApiResource)
+		if err != nil {
+			return "", err
+		}
+	}
 	return cleanApiResource, nil
 }
 
@@ -566,7 +625,9 @@ func writeLogs(kc Kc, path string, apis string, baseName string, gv string, gz b
 }
 
 func apiIgnoreNotFoundResponseTransformer(kc Kc) (string, error) {
-	if kc.Status() == http.StatusNotFound || kc.Status() == http.StatusMethodNotAllowed {
+	if kc.Status() == http.StatusNotFound ||
+		kc.Status() == http.StatusMethodNotAllowed ||
+		kc.Status() == http.StatusGone {
 		return "", nil
 	}
 	return kc.Response(), kc.Err()
@@ -588,9 +649,17 @@ func formatResourceContent(contents string, format int, chunked bool) (string, e
 		if newcontent, err = yjq.Y2JC(contents); err != nil {
 			return "", err
 		}
-		if newcontent, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";" ") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";" ") | (.. | strings) |= gsub("\r";" ") | (.. | strings) |= gsub("\b";" ") | (.. | strings) |= gsub("\f";" ")`, newcontent); err != nil {
-			return "", err
-		}
+		newcontent = strings.ReplaceAll(newcontent, `\\\\`, ``)
+		newcontent = strings.ReplaceAll(newcontent, `\\`, ``)
+		newcontent = strings.ReplaceAll(newcontent, `\n`, ``)
+		newcontent = strings.ReplaceAll(newcontent, `\"`, `'`)
+		newcontent = strings.ReplaceAll(newcontent, `\t`, ``)
+		newcontent = strings.ReplaceAll(newcontent, `\r`, ``)
+		newcontent = strings.ReplaceAll(newcontent, `\b`, ``)
+		newcontent = strings.ReplaceAll(newcontent, `\f`, ``)
+		// if newcontent, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";" ") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";" ") | (.. | strings) |= gsub("\r";" ") | (.. | strings) |= gsub("\b";" ") | (.. | strings) |= gsub("\f";" ")`, newcontent); err != nil {
+		// 	return "", err
+		// }
 	}
 	switch format {
 	case YAML:
