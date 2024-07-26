@@ -146,17 +146,17 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	path = path + "/"
 	// big things to retrieve serially
 	// name.gv -> chunk size to use
-	bigSizedReplyMap := map[string]int{
-		"packagemanifests.packages.operators.coreos.com/v1": 1,
-		"configmaps.v1": 1,
-		"apirequestcounts.apiserver.openshift.io/v1": 5,
-		// "images.image.openshift.io/v1":               10,
-		// "events.v1":                                         10,
-		// "events.events.k8s.io/v1":                           10,
-		"customresourcedefinitions.apiextensions.k8s.io/v1": 10,
-		// "pods.v1": 10,
-		// "machineconfigs.machineconfiguration.openshift.io/v1": 5,
-	}
+	// bigSizedReplyMap := map[string]int{
+	// 	"packagemanifests.packages.operators.coreos.com/v1": 1,
+	// 	"configmaps.v1": 1,
+	// 	"apirequestcounts.apiserver.openshift.io/v1": 5,
+	// 	// "images.image.openshift.io/v1":               10,
+	// 	// "events.v1":                                         10,
+	// 	// "events.events.k8s.io/v1":                           10,
+	// 	"customresourcedefinitions.apiextensions.k8s.io/v1": 10,
+	// 	// "pods.v1": 10,
+	// 	// "machineconfigs.machineconfiguration.openshift.io/v1": 5,
+	// }
 	//
 	// retrieve gvk list and write
 	//
@@ -214,16 +214,16 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	//
 	// retrieve big guys first serially
 	//
-	for i, le := range apiList {
-		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
-		if bigSizedReplyChunkSize, isBig := bigSizedReplyMap[name+"."+gv]; isBig {
-			chunkSize = bigSizedReplyChunkSize
-			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
-			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, chunkSize, progress)
-			logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
-			apiList = slices.Delete(apiList, i, i+1)
-		}
-	}
+	// for i, le := range apiList {
+	// 	name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
+	// 	if bigSizedReplyChunkSize, isBig := bigSizedReplyMap[name+"."+gv]; isBig {
+	// 		chunkSize = bigSizedReplyChunkSize
+	// 		logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
+	// 		writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, chunkSize, progress)
+	// 		logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
+	// 		apiList = slices.Delete(apiList, i, i+1)
+	// 	}
+	// }
 	//
 	// retrieve everything else in parallel
 	//
@@ -346,10 +346,12 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 	gvName := strings.ReplaceAll(gv, "/", "_")
 	gvName = strings.ReplaceAll(gvName, ".", "_")
 	fileName := name + "." + gvName + ".yaml"
-	formatResourceContentSep := ""
+	formatResourceContentSep := "\n"
 	listKind := ""
-	if format == JSON || format == JSON_PRETTY {
+	if format == JSON {
 		formatResourceContentSep = ","
+	} else if format == JSON_PRETTY {
+		formatResourceContentSep = ",\n"
 	}
 	logger.Info("starting " + logLine)
 	defer logger.Info("finishing " + logLine)
@@ -391,10 +393,7 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 				if apiResources, err = formatResourceContent(apiResources, format, true); err != nil {
 					return writeResourceListLog("formatting resource content  "+logLine, err)
 				}
-				if ric > 0 {
-					apiResources = apiResources + formatResourceContentSep
-				}
-				if err = writeTempChunk(path+listKind+"."+fileName+".chunk", apiResources); err != nil {
+				if err = writeTempChunk(path+listKind+"."+fileName+".chunk", apiResources, formatResourceContentSep); err != nil {
 					return writeResourceListLog("writeTempChunk "+logLine, err)
 				}
 				if !nologs && name == "pods" && gv == kc.Version() {
@@ -418,10 +417,7 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 					if err != nil {
 						return writeResourceListLog("formatting resource content  "+logLine, err)
 					}
-					if ric > 0 {
-						formattedApiRs = formattedApiRs + formatResourceContentSep
-					}
-					if err = writeTempChunk(nsPath+listKind+"."+fileName+".chunk", formattedApiRs); err != nil {
+					if err = writeTempChunk(nsPath+listKind+"."+fileName+".chunk", formattedApiRs, formatResourceContentSep); err != nil {
 						return writeResourceListLog("writeTempChunk "+logLine, err)
 					}
 					// get pods' logs or no
@@ -476,7 +472,7 @@ func joinChunks(path string, format int, gz bool) error {
 				}
 			case JSON_PRETTY:
 				header := "{\n  \"kind\": \"%s\",\n  \"apiVersion\": \"%s\",\n  \"metadata\": {\n    \"apiName\": \"%s\"\n  },\n  \"items\": [\n"
-				if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}", gz); err != nil {
+				if err = writeFinalFile(p, finalFile, header, kind, gv, name, "\n  ]\n}", gz); err != nil {
 					return err
 				}
 			}
@@ -521,12 +517,19 @@ func getApiListHeaderFromFileName(file string) (string, string, string) {
 	return k, n, gv
 }
 
-func writeTempChunk(path string, content string) error {
+func writeTempChunk(path string, content string, separator string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if stat.Size() > 0 {
+		content = separator + content
+	}
 	if _, err = f.WriteString(content); err != nil {
 		return err
 	}
@@ -657,9 +660,6 @@ func formatResourceContent(contents string, format int, chunked bool) (string, e
 		newcontent = strings.ReplaceAll(newcontent, `\r`, ``)
 		newcontent = strings.ReplaceAll(newcontent, `\b`, ``)
 		newcontent = strings.ReplaceAll(newcontent, `\f`, ``)
-		// if newcontent, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";" ") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";" ") | (.. | strings) |= gsub("\r";" ") | (.. | strings) |= gsub("\b";" ") | (.. | strings) |= gsub("\f";" ")`, newcontent); err != nil {
-		// 	return "", err
-		// }
 	}
 	switch format {
 	case YAML:
@@ -690,17 +690,18 @@ func formatResourceContent(contents string, format int, chunked bool) (string, e
 		var nc strings.Builder
 		for i, p := range split {
 			pretty, err := yjq.J2JP(p)
+			// pretty = pretty[:len(pretty)-1]
 			if err != nil {
 				return "", err
 			}
 			if i < len(split)-1 {
-				pretty = pretty + ","
+				pretty = pretty + ",\n"
 			}
 			np, err := _sed("s/^/    /", pretty)
 			if err != nil {
 				return "", err
 			}
-			nc.WriteString(np)
+			nc.WriteString(np[:len(np)-1])
 			if i < len(split)-1 {
 				nc.WriteString("\n")
 			}
