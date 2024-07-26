@@ -693,13 +693,16 @@ func formatResourceContent(contents string, format int, chunked bool) (string, e
 			if err != nil {
 				return "", err
 			}
+			if i < len(split)-1 {
+				pretty = pretty + ","
+			}
 			np, err := _sed("s/^/    /", pretty)
 			if err != nil {
 				return "", err
 			}
 			nc.WriteString(np)
 			if i < len(split)-1 {
-				nc.WriteString(",\n")
+				nc.WriteString("\n")
 			}
 		}
 		return nc.String(), nil
