@@ -19,6 +19,7 @@ import (
 	"github.com/coreybutler/go-fsutil"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 	"github.com/pieterclaerhout/go-waitgroup"
+	"github.com/rwtodd/Go.Sed/sed"
 	"go.uber.org/zap"
 )
 
@@ -153,7 +154,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if apis, err = FilterApiResources(apis, gvkExclusionList); err != nil {
 		return err
 	}
-	if err = writeTextFile(path+"api_resources.yaml", apis, _gz, format); err != nil {
+	if err = writeResourceFile(path+"api_resources.yaml", apis, _gz, format); err != nil {
 		return err
 	}
 	//
@@ -186,7 +187,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	} else if !nologs {
 		fsutil.Mkdirp(filepath.FromSlash(path + "/log"))
 	}
-	if err = writeTextFile(path+"namespaces."+kc.Version()+".yaml", ns, _gz, format); err != nil {
+	if err = writeResourceFile(path+"namespaces."+kc.Version()+".yaml", ns, _gz, format); err != nil {
 		return err
 	}
 	//
@@ -218,6 +219,9 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		}()
 	}
 	wg.Wait()
+	if err = joinChunks(path, format); err != nil {
+		return err
+	}
 	version, err := kc.Get("/version")
 	if err != nil {
 		return err
@@ -225,7 +229,10 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if version, err = yjq.YqEval(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
 		return err
 	}
-	if err = writeTextFile(path+"version.yaml", version, _gz, format); err != nil {
+	if format == JSON_LINES || format == JSON_LINES_WRAPPED {
+		format = JSON
+	}
+	if err = writeResourceFile(path+"version.yaml", version, _gz, format); err != nil {
 		return err
 	}
 	if tgz {
@@ -262,16 +269,12 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			return err
 		}
 		for fi, f := range l {
-			fcontent, err := fsutil.ReadTextFile(f)
-			if err != nil {
-				return err
-			}
 			if fi > 0 {
 				if _, err := bigFile.WriteString(separator); err != nil {
 					return err
 				}
 			}
-			if _, err := bigFile.WriteString(fcontent); err != nil {
+			if err := copyFile(f, bigFile); err != nil {
 				return err
 			}
 			os.Remove(f)
@@ -304,82 +307,217 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 		defer progress()
 	}
 	logLine := fmt.Sprintf("writeResourceList: baseName=%s name=%s  gv=%s namespaced=%t", baseName, name, gv, namespaced)
-	logger.Info(logLine)
 	kc := NewKc()
 	gvName := strings.ReplaceAll(gv, "/", "_")
 	gvName = strings.ReplaceAll(gvName, ".", "_")
 	fileName := name + "." + gvName + ".yaml"
-	// fileName = strings.ReplaceAll(fileName, ".", "_") + ".yaml"
-	apiResources, err := kc.
-		SetResponseTransformer(apiIgnoreNotFoundResponseTransformer).
-		Get(baseName + gv + "/" + name)
-	if err != nil {
-		return writeResourceListLog("get "+logLine, err)
+	formatResourceContentSep := ""
+	chunkSize := 50
+	listKind := ""
+	if format == JSON || format == JSON_PRETTY {
+		formatResourceContentSep = ","
 	}
-	if len(apiResources) == 0 {
-		logger.Info("empty api resource list " + logLine)
-		return nil
-		// return writeResourceListLog("empty "+logLine, errors.New("empty list"))
-	}
-	if nsExclusionList != nil {
-		if apiResources, err = FilterNS(apiResources, nsExclusionList, false); err != nil {
-			return writeResourceListLog("FilterNS from api resources "+logLine, err)
+	logger.Info(logLine)
+	// start getting chunked list
+	for ctk := ""; ; {
+		apiResources, err := kc.
+			SetResponseTransformer(apiIgnoreNotFoundResponseTransformer).
+			SetGetParam("limit", fmt.Sprintf("%d", chunkSize)).
+			SetGetParam("continue", ctk).
+			Get(baseName + gv + "/" + name)
+		if err != nil {
+			return writeResourceListLog("get api chunk "+logLine, err)
+		}
+		if len(apiResources) == 0 {
+			if len(ctk) == 0 {
+				break
+			}
+			continue
+		}
+		ctk, err = yjq.YqEval(`.metadata.continue // ""`, apiResources)
+		if err != nil {
+			return writeResourceListLog("find continue get api chunk "+logLine, err)
+		}
+		ric, err := yjq.Eval2Int(yjq.YqEval, `.metadata.remainingItemCount // "0"`, apiResources)
+		if err != nil {
+			logger.Debug("Eval2Int get api chunk "+logLine, zap.Error(err))
+			ric = 0
+		}
+		if apiResources, err = cleanApiResourcesChunk(apiResources, name, gv, nsExclusionList); err != nil {
+			return writeResourceListLog("cleanApiResourcesChunk "+logLine, err)
+		}
+		if len(apiResources) > 0 {
+			if listKind == "" {
+				if listKind, err = yjq.YqEval(".kind", apiResources); err != nil {
+					return writeResourceListLog("get chunk list kind "+logLine, err)
+				}
+			}
+			if !namespaced || !splitns {
+				if apiResources, err = formatResourceContent(apiResources, format, true); err != nil {
+					return writeResourceListLog("formatting resource content  "+logLine, err)
+				}
+				if ric > 0 {
+					apiResources = apiResources + formatResourceContentSep
+				}
+				if err = writeTempChunk(path+listKind+"."+fileName+".chunk", apiResources); err != nil {
+					return writeResourceListLog("writeTempChunk "+logLine, err)
+				}
+				if !nologs && name == "pods" && gv == kc.Version() {
+					if err = writeLogs(kc, path+"log/", apiResources, baseName, gv, gz, splitns, logLine); err != nil {
+						return writeResourceListLog("write logs "+logLine, err)
+					}
+				}
+			} else {
+				nsList, err := yjq.Eval2List(yjq.YqEval, "[.items[].metadata.namespace] | unique | .[]", apiResources)
+				if err != nil {
+					return writeResourceListLog("read ns list from apiResources"+logLine, err)
+				}
+				for _, ns := range nsList {
+					// nsPath := path + strings.ReplaceAll(ns, "-", "_") + "/"
+					nsPath := path + ns + "/"
+					apiByNs, err := yjq.YqEval(`.items = [.items[] | select(.metadata.namespace=="%s")]`, apiResources, ns)
+					if err != nil {
+						return writeResourceListLog("apiByNs "+logLine, err)
+					}
+					formattedApiRs, err := formatResourceContent(apiByNs, format, true)
+					if err != nil {
+						return writeResourceListLog("formatting resource content  "+logLine, err)
+					}
+					if ric > 0 {
+						formattedApiRs = formattedApiRs + formatResourceContentSep
+					}
+					if err = writeTempChunk(nsPath+listKind+"."+fileName+".chunk", formattedApiRs); err != nil {
+						return writeResourceListLog("writeTempChunk "+logLine, err)
+					}
+					// get pods' logs or no
+					if !nologs && name == "pods" && gv == kc.Version() {
+						if err = writeLogs(kc, nsPath+"log/", apiByNs, baseName, gv, gz, splitns, logLine); err != nil {
+							return writeResourceListLog("write logs "+logLine, err)
+						}
+					}
+				}
+			}
+		}
+		if ric == 0 {
+			break
 		}
 	}
-	if totItems, err := yjq.Eval2Int(yjq.YqEval, ".items | length", apiResources); totItems < 1 {
+	return nil
+}
+
+func joinChunks(path string, format int) error {
+	return filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			if strings.HasSuffix(p, ".chunk") {
+				finalFile := strings.Replace(p, ".chunk", "", 1)
+				if format != YAML {
+					finalFile = strings.Replace(finalFile, ".yaml", ".json", 1)
+				}
+				kind, name, gv := getApiListHeaderFromFileName(finalFile)
+				switch format {
+				case JSON_LINES, JSON_LINES_WRAPPED:
+					if err := fsutil.Move(p, finalFile); err != nil {
+						return err
+					}
+				case YAML:
+					header := "kind: %s\napiVersion: %s\nmetadata:\n  apiName: %s\nitems:\n"
+					if err = writeFinalFile(p, finalFile, header, kind, gv, name, ""); err != nil {
+						return err
+					}
+				case JSON:
+					header := `{"kind":"%s","apiVersion":"%s","metadata":{"apiName":"%s"},"items":[`
+					if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}"); err != nil {
+						return err
+					}
+				case JSON_PRETTY:
+					header := "{\n  \"kind\": \"%s\",\n  \"apiVersion\": \"%s\",\n  \"metadata\": {\n    \"apiName\": \"%s\"\n  },\n  \"items\": [\n"
+					if err = writeFinalFile(p, finalFile, header, kind, gv, name, "]}"); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func writeFinalFile(chunkFile string, finalFile string, header string, kind string, gv string, name string, tail string) error {
+	f, err := os.OpenFile(finalFile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	defer os.Remove(chunkFile)
+	if _, err = f.WriteString(fmt.Sprintf(header, kind, gv, name)); err != nil {
+		return err
+	}
+	if err = copyFile(chunkFile, f); err != nil {
+		return err
+	}
+	if _, err = f.WriteString(tail); err != nil {
+		return err
+	}
+	return nil
+}
+
+func getApiListHeaderFromFileName(file string) (string, string, string) {
+	h := strings.Split(filepath.Base(file), ".")
+	k := h[0]
+	n := h[1]
+	_gv := strings.Split(h[2], "_")
+	gv := _gv[0]
+	if len(_gv) > 1 {
+		gv = strings.Join(_gv[0:len(_gv)-1], ".") + "/" + _gv[len(_gv)-1]
+	}
+	return k, n, gv
+}
+
+func writeTempChunk(path string, content string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err = f.WriteString(content); err != nil {
+		return err
+	}
+	return nil
+}
+
+func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclusionList []string) (string, error) {
+	if len(apiResources) == 0 {
+		return "", nil
+	}
+	var (
+		cleanApiResource = apiResources
+		err              error
+	)
+	if nsExclusionList != nil {
+		if cleanApiResource, err = FilterNS(apiResources, nsExclusionList, false); err != nil {
+			return "", err
+		}
+	}
+	if totItems, err := yjq.Eval2Int(yjq.YqEval, ".items | length", cleanApiResource); totItems == 0 {
 		e := ""
 		if err != nil {
 			e = " error converting to integer: " + err.Error()
 		}
-		logger.Info(fileName + " api resource list with zero items " + logLine + e)
-		return nil
+		logger.Debug(name + " " + gv + " api resource list with zero items" + e)
+		return "", nil
 	}
-	if apiResources, err = yjq.YqEval(DefaultCleaningQuery, apiResources); err != nil {
-		return writeResourceListLog("DefaultCleaningQuery "+logLine, err)
+	if cleanApiResource, err = yjq.YqEval(DefaultCleaningQuery, cleanApiResource); err != nil {
+		return "", err
 	}
 	if name == "secrets" {
-		apiResources, err = yjq.YqEval(`.items[].data.[] = ""`, apiResources)
+		cleanApiResource, err = yjq.YqEval(`.items[].data.[] = ""`, cleanApiResource)
 		if err != nil {
-			return writeResourceListLog("secrets "+logLine, err)
+			return "", err
 		}
 	}
-	// append api name
-	if apiResources, err = yjq.YqEval(`with(.items[]; .metadata.annotations += {"apiResourceName": "%s"})`, apiResources, name); err != nil {
-		return err
-	}
-	if !namespaced || !splitns {
-		if err = writeTextFile(path+fileName, apiResources, gz, format); err != nil {
-			return writeResourceListLog("write resource "+logLine, err)
-		}
-		if !nologs && name == "pods" && gv == kc.Version() {
-			if err = writeLogs(kc, path+"log/", apiResources, baseName, gv, gz, splitns, logLine); err != nil {
-				return writeResourceListLog("write logs "+logLine, err)
-			}
-		}
-	} else {
-		nsList, err := yjq.Eval2List(yjq.YqEval, "[.items[].metadata.namespace] | unique | .[]", apiResources)
-		if err != nil {
-			return writeResourceListLog("read ns list from apiResources"+logLine, err)
-		}
-		for _, ns := range nsList {
-			// nsPath := path + strings.ReplaceAll(ns, "-", "_") + "/"
-			nsPath := path + ns + "/"
-			apiByNs, err := yjq.YqEval(`.items = [.items[] | select(.metadata.namespace=="%s")]`, apiResources, ns)
-			if err != nil {
-				return writeResourceListLog("apiByNs "+logLine, err)
-			}
-			if err = writeTextFile(nsPath+fileName, apiByNs, gz, format); err != nil {
-				return writeResourceListLog("write resource "+logLine, err)
-			}
-			// get pods' logs or no
-			if !nologs && name == "pods" && gv == kc.Version() {
-				if err = writeLogs(kc, nsPath+"log/", apiByNs, baseName, gv, gz, splitns, logLine); err != nil {
-					return writeResourceListLog("write logs "+logLine, err)
-				}
-			}
-		}
-	}
-	return nil
+	return cleanApiResource, nil
 }
 
 func writeLogs(kc Kc, path string, apis string, baseName string, gv string, gz bool, splitns bool, logLine string) error {
@@ -440,41 +578,87 @@ func writeResourceListLog(msg string, err error) error {
 	return err
 }
 
-func writeTextFile(path string, contents string, gz bool, format int) error {
-	var err error
+func formatResourceContent(contents string, format int, chunked bool) (string, error) {
+	var (
+		err        error
+		newcontent = contents
+	)
 	// filter wrapped json content in strings
 	if slices.Contains([]int{JSON, JSON_LINES, JSON_PRETTY, JSON_LINES_WRAPPED}, format) {
-		if contents, err = yjq.Y2JC(contents); err != nil {
-			return err
+		if newcontent, err = yjq.Y2JC(contents); err != nil {
+			return "", err
 		}
-		if contents, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";" ") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";" ") | (.. | strings) |= gsub("\r";" ") | (.. | strings) |= gsub("\b";" ") | (.. | strings) |= gsub("\f";" ")`, contents); err != nil {
-			return err
+		if newcontent, err = yjq.JqEval(`(.. | strings) |= gsub("\"";"'") | (.. | strings) |= gsub("\n\\s*";" ") | (.. | strings) |= gsub("\\\\";"") | (.. | strings) |= gsub("\t";" ") | (.. | strings) |= gsub("\r";" ") | (.. | strings) |= gsub("\b";" ") | (.. | strings) |= gsub("\f";" ")`, newcontent); err != nil {
+			return "", err
 		}
 	}
 	switch format {
 	case YAML:
-		path = rewriteFileSuffix(path, "yaml")
+		if !chunked {
+			return newcontent, nil
+		}
+		return yjq.YqEval("[.items[]]", newcontent)
 	case JSON:
-		path = rewriteFileSuffix(path, "json")
+		if !chunked {
+			return newcontent, nil
+		}
+		if newcontent, err = yjq.JqEval(".items[]", newcontent); err != nil {
+			return "", err
+		}
+		return strings.ReplaceAll(newcontent, "\n", ","), nil
 	case JSON_LINES:
-		if contents, err = yjq.JqEval(".items[]", contents); err != nil {
-			return err
-		}
-		path = rewriteFileSuffix(path, "json")
+		return yjq.JqEval(".items[]", newcontent)
 	case JSON_LINES_WRAPPED:
-		if contents, err = yjq.JqEval(`{"_": .items[]}`, contents); err != nil {
-			return err
-		}
-		path = rewriteFileSuffix(path, "json")
+		return yjq.JqEval(`{"_": .items[]}`, newcontent)
 	case JSON_PRETTY:
-		if contents, err = yjq.J2JP(contents); err != nil {
-			return err
+		if !chunked {
+			return yjq.J2JP(newcontent)
 		}
-		path = rewriteFileSuffix(path, "json")
+		if newcontent, err = yjq.JqEval(".items[]", newcontent); err != nil {
+			return "", err
+		}
+		split := strings.Split(newcontent, "\n")
+		var nc strings.Builder
+		for i, p := range split {
+			pretty, err := yjq.J2JP(p)
+			if err != nil {
+				return "", err
+			}
+			np, err := _sed("s/^/    /", pretty)
+			if err != nil {
+				return "", err
+			}
+			nc.WriteString(np)
+			if i < len(split)-1 {
+				nc.WriteString(",\n")
+			}
+		}
+		return nc.String(), nil
 	default:
-		return fmt.Errorf("writeTextFile unknown output format requested")
+		return "", fmt.Errorf("writeTextFile unknown output format requested")
 	}
-	if err = fsutil.WriteTextFile(path, contents); err != nil {
+}
+
+func writeResourceFile(path string, contents string, gz bool, format int) error {
+	var (
+		f          *os.File
+		err        error
+		newcontent = contents
+	)
+	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
+		return fmt.Errorf("unknown format")
+	}
+	if format != YAML {
+		path = strings.Replace(path, ".yaml", ".json", 1)
+	}
+	if newcontent, err = formatResourceContent(contents, format, false); err != nil {
+		return err
+	}
+	if f, err = os.OpenFile(path, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err = f.WriteString(newcontent); err != nil {
 		return err
 	}
 	if gz {
@@ -587,19 +771,6 @@ func FormatCodeFromString(format string) (int, error) {
 	}
 }
 
-func rewriteFileSuffix(path string, suffix string) string {
-	d := filepath.Dir(path)
-	f := filepath.Base(path)
-	p := strings.Split(f, ".")
-	if len(p) == 1 {
-		p = append(p, suffix)
-	} else {
-		p[len(p)-1] = suffix
-	}
-	f = strings.Join(p, ".")
-	return filepath.FromSlash(d + "/" + f)
-}
-
 // TODO: use OR in yq query to avoid loop. not top of the list since filtering is not common
 func FilterApiResources(apis string, gvkExclusionList []string) (string, error) {
 	var (
@@ -642,4 +813,26 @@ func FilterNS(apis string, nsExclusionList []string, resourceIsNs bool) (string,
 		}
 	}
 	return filteredApis, nil
+}
+
+func copyFile(src string, dst *os.File) error {
+	source, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	_, err = io.Copy(dst, source)
+	return err
+}
+
+func _sed(expr string, input string) (string, error) {
+	r, e := sed.New(strings.NewReader(expr))
+	if e != nil {
+		return "", e
+	}
+	s, e := r.RunString(input)
+	if e != nil {
+		return "", e
+	}
+	return s, e
 }

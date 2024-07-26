@@ -97,7 +97,9 @@ func yqEval(expr string, input string, encoder yqlib.Encoder, decoder yqlib.Deco
 
 func Eval2Int(evalFunc EvalFunc, expr string, input string, param ...any) (int, error) {
 	if l, e := evalFunc(expr, input, param...); e != nil {
-		return -1, e
+		return 0, e
+	} else if len(l) == 0 {
+		return 0, nil
 	} else {
 		return strconv.Atoi(l)
 	}

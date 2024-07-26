@@ -85,7 +85,7 @@ begin
         where _ ?& array['buildDate', 'dumpDate'] and id is null;
 
         update cluster set id = cdata.cluster,
-                           api_name = jptxtone(_,'$.items[0].metadata.annotations.apiResourceName'),
+                           api_name = _ #>> '{metadata,apiName}',
                            api_gv = _ ->> 'apiVersion',
                            api_k = replace(_ ->> 'kind', 'List', '')
         where api_name is null and id is null;

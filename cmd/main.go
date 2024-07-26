@@ -93,7 +93,6 @@ func main() {
 func dump() int {
 	log.SetLoggerLevel(logLevel)
 	kc := kcli.NewKcWithConfigContext(kubeconfig, context)
-	// fmt.Println(kc.Cluster())
 	if kc == nil {
 		fmt.Fprintf(os.Stderr, "unable to start k8s client from config file '%s' and context '%s'\n", kubeconfig, context)
 		os.Exit(-1)
