@@ -146,17 +146,17 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	path = path + "/"
 	// big things to retrieve serially
 	// name.gv -> chunk size to use
-	// bigSizedReplyMap := map[string]int{
-	// 	"packagemanifests.packages.operators.coreos.com/v1": 1,
-	// 	"configmaps.v1": 1,
-	// 	"apirequestcounts.apiserver.openshift.io/v1": 5,
-	// 	// "images.image.openshift.io/v1":               10,
-	// 	// "events.v1":                                         10,
-	// 	// "events.events.k8s.io/v1":                           10,
-	// 	"customresourcedefinitions.apiextensions.k8s.io/v1": 10,
-	// 	// "pods.v1": 10,
-	// 	// "machineconfigs.machineconfiguration.openshift.io/v1": 5,
-	// }
+	bigSizedReplyMap := map[string]int{
+		"packagemanifests.packages.operators.coreos.com/v1": 1,
+		"configmaps.v1": 1,
+		"apirequestcounts.apiserver.openshift.io/v1": 5,
+		// "images.image.openshift.io/v1":               10,
+		// "events.v1":                                         10,
+		// "events.events.k8s.io/v1":                           10,
+		"customresourcedefinitions.apiextensions.k8s.io/v1": 10,
+		// "pods.v1": 10,
+		// "machineconfigs.machineconfiguration.openshift.io/v1": 5,
+	}
 	//
 	// retrieve gvk list and write
 	//
@@ -183,7 +183,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		return err
 	}
 	// append api name
-	if ns, err = yjq.YqEval(`with(.items[]; .metadata.annotations += {"apiResourceName": "%s"})`, ns, "namespaces"); err != nil {
+	if ns, err = yjq.YqEval(`.metadata.apiName = "namespaces"`, ns); err != nil {
 		return err
 	}
 	if splitns {
@@ -214,16 +214,16 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	//
 	// retrieve big guys first serially
 	//
-	// for i, le := range apiList {
-	// 	name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
-	// 	if bigSizedReplyChunkSize, isBig := bigSizedReplyMap[name+"."+gv]; isBig {
-	// 		chunkSize = bigSizedReplyChunkSize
-	// 		logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
-	// 		writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, chunkSize, progress)
-	// 		logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
-	// 		apiList = slices.Delete(apiList, i, i+1)
-	// 	}
-	// }
+	for i, le := range apiList {
+		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
+		if bigSizedReplyChunkSize, isBig := bigSizedReplyMap[name+"."+gv]; isBig {
+			chunkSize = bigSizedReplyChunkSize
+			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
+			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, _gz, format, chunkSize, progress)
+			logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
+			apiList = slices.Delete(apiList, i, i+1)
+		}
+	}
 	//
 	// retrieve everything else in parallel
 	//
