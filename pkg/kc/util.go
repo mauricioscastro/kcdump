@@ -273,6 +273,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			bigFileName = bigFileName + ".json"
 		}
 		bigFilePath := strings.Replace(path, dumpDir+"/", "", -1) + bigFileName
+		logger.Info("joining extracted into a single file " + bigFilePath)
 		separator := "\n"
 		if format == YAML {
 			separator = "\n---\n"
@@ -301,6 +302,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			if err = gzip(bigFilePath); err != nil {
 				logger.Error("gzip error", zap.Error(err))
 			}
+			logger.Info("gzipped " + bigFilePath)
 		}
 		if nologs {
 			os.Remove(path)
@@ -316,6 +318,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			return errors.New(collectedErrors.String())
 		}
 	}
+	logger.Info("finished dumping cluster " + kc.cluster)
 	return nil
 }
 
