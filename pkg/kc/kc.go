@@ -85,6 +85,10 @@ func init() {
 	cache = sync.Map{} //currently only caching api version
 }
 
+func SetLogLevel(level string) {
+	log.ResetLoggerLevel(logger, level)
+}
+
 func NewKc() Kc {
 	token, err := os.ReadFile(TokenPath)
 	if err != nil {
