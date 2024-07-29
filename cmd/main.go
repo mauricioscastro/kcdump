@@ -25,7 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/mauricioscastro/kcdump/pkg/kc"
-	kcli "github.com/mauricioscastro/kcdump/pkg/kc"
+	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 )
@@ -92,7 +92,7 @@ func main() {
 
 func dump() int {
 	log.SetLoggerLevel(logLevel)
-	kc := kcli.NewKcWithConfigContext(kubeconfig, context)
+	kc := Kc.NewKcWithConfigContext(kubeconfig, context)
 	if kc == nil {
 		fmt.Fprintf(os.Stderr, "unable to start k8s client from config file '%s' and context '%s'\n", kubeconfig, context)
 		os.Exit(-1)
@@ -102,7 +102,7 @@ func dump() int {
 		if e != nil {
 			return 1
 		}
-		n, e = kcli.FilterNS(n, xns, true)
+		n, e = Kc.FilterNS(n, xns, true)
 		if e != nil {
 			return 2
 		}
@@ -119,7 +119,7 @@ func dump() int {
 		if e != nil {
 			return 4
 		}
-		g, e = kcli.FilterApiResources(g, xgvk)
+		g, e = Kc.FilterApiResources(g, xgvk)
 		if e != nil {
 			return 5
 		}
@@ -134,7 +134,7 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	outputfmt, e := kcli.FormatCodeFromString(format)
+	outputfmt, e := Kc.FormatCodeFromString(format)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 7
