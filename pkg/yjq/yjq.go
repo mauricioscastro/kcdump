@@ -22,10 +22,22 @@ type EvalFunc func(string, string, ...any) (string, error)
 
 var (
 	yamlPrefs = yqlib.YamlPreferences{
+		Indent:                      2,
+		ColorsEnabled:               false,
 		LeadingContentPreProcessing: true,
 		PrintDocSeparators:          true,
 		UnwrapScalar:                true,
 		EvaluateTogether:            true,
+	}
+	jsonPrefs = yqlib.JsonPreferences{
+		Indent:        2,
+		ColorsEnabled: false,
+		UnwrapScalar:  true,
+	}
+	jsonPrefsCompact = yqlib.JsonPreferences{
+		Indent:        -1,
+		ColorsEnabled: false,
+		UnwrapScalar:  true,
 	}
 )
 
@@ -37,18 +49,18 @@ func SilenceYqLogs() {
 
 func Y2JC(yaml string) (string, error) {
 	yamlDecoder := yqlib.NewYamlDecoder(yamlPrefs)
-	compactJsonEncoder := yqlib.NewJSONEncoder(-1, false, true)
+	compactJsonEncoder := yqlib.NewJSONEncoder(jsonPrefsCompact)
 	return yqEval(".", yaml, compactJsonEncoder, yamlDecoder)
 }
 
 func Y2JP(yaml string) (string, error) {
 	yamlDecoder := yqlib.NewYamlDecoder(yamlPrefs)
-	prettyJsonEncoder := yqlib.NewJSONEncoder(2, false, true)
+	prettyJsonEncoder := yqlib.NewJSONEncoder(jsonPrefs)
 	return yqEval(".", yaml, prettyJsonEncoder, yamlDecoder)
 }
 
 func J2JP(json string) (string, error) {
-	prettyJsonEncoder := yqlib.NewJSONEncoder(2, false, true)
+	prettyJsonEncoder := yqlib.NewJSONEncoder(jsonPrefs)
 	return yqEval(".", json, prettyJsonEncoder, yqlib.NewJSONDecoder())
 }
 
@@ -61,29 +73,29 @@ func J2Y(json string) (string, error) {
 }
 
 func YqEval(expr string, yaml string, param ...any) (string, error) {
-	yamlEncoder := yqlib.NewYamlEncoder(2, false, yamlPrefs)
+	yamlEncoder := yqlib.NewYamlEncoder(yamlPrefs)
 	yamlDecoder := yqlib.NewYamlDecoder(yamlPrefs)
 	return yqEval(expr, yaml, yamlEncoder, yamlDecoder, param...)
 }
 
 func YqEval2JC(expr string, yaml string, param ...any) (string, error) {
 	yamlDecoder := yqlib.NewYamlDecoder(yamlPrefs)
-	compactJsonEncoder := yqlib.NewJSONEncoder(-1, false, true)
+	compactJsonEncoder := yqlib.NewJSONEncoder(jsonPrefsCompact)
 	return yqEval(expr, yaml, compactJsonEncoder, yamlDecoder, param...)
 }
 
 func YqEvalJ2JC(expr string, json string, param ...any) (string, error) {
-	compactJsonEncoder := yqlib.NewJSONEncoder(-1, false, true)
+	compactJsonEncoder := yqlib.NewJSONEncoder(jsonPrefsCompact)
 	return yqEval(expr, json, compactJsonEncoder, yqlib.NewJSONDecoder(), param...)
 }
 
 func YqEvalJ2JP(expr string, json string, param ...any) (string, error) {
-	prettyJsonEncoder := yqlib.NewJSONEncoder(2, false, true)
+	prettyJsonEncoder := yqlib.NewJSONEncoder(jsonPrefs)
 	return yqEval(expr, json, prettyJsonEncoder, yqlib.NewJSONDecoder(), param...)
 }
 
 func YqEvalJ2Y(expr string, json string, param ...any) (string, error) {
-	yamlEncoder := yqlib.NewYamlEncoder(2, false, yamlPrefs)
+	yamlEncoder := yqlib.NewYamlEncoder(yamlPrefs)
 	return yqEval(expr, json, yamlEncoder, yqlib.NewJSONDecoder(), param...)
 }
 
