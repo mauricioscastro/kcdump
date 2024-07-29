@@ -301,6 +301,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			if err = gzip(bigFilePath); err != nil {
 				logger.Error("gzip error", zap.Error(err))
 			}
+			bigFilePath = bigFilePath + ".gz"
 		}
 		if nologs {
 			os.Remove(path)
