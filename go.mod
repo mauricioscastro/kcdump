@@ -3,7 +3,7 @@ module github.com/mauricioscastro/kcdump
 go 1.21
 
 require (
-	github.com/coreybutler/go-fsutil v1.2.2
+	github.com/coreybutler/go-fsutil v1.2.1
 	github.com/go-resty/resty/v2 v2.13.1
 	github.com/goccy/go-json v0.10.3
 	github.com/itchyny/gojq v0.12.16

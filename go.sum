@@ -6,6 +6,8 @@ github.com/alecthomas/participle/v2 v2.1.1 h1:hrjKESvSqGHzRb4yW1ciisFJ4p3MGYih6i
 github.com/alecthomas/participle/v2 v2.1.1/go.mod h1:Y1+hAs8DHPmc3YUFzqllV+eSQ9ljPTk0ZkPMtEdAx2c=
 github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc=
 github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
+github.com/coreybutler/go-fsutil v1.2.1 h1:HlnBaPgJAYEDUwQu5zc1MzmaWtB6OSvIWLXnTA11g18=
+github.com/coreybutler/go-fsutil v1.2.1/go.mod h1:tLG9p9LcRVBiKWtG8HC7btUpRY7uvl4xqEnCYagf0qc=
 github.com/coreybutler/go-fsutil v1.2.2 h1:ZMQ9J7VQrsbiPpyqN971kMCXxfYpWkPAGZb1M0159Nw=
 github.com/coreybutler/go-fsutil v1.2.2/go.mod h1:QQh0JzTQiTE86QZXr9it80gw+bdq+PSa6Bd0XBI73cQ=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
