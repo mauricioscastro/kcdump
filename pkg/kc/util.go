@@ -301,13 +301,10 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			if err = gzip(bigFilePath); err != nil {
 				logger.Error("gzip error", zap.Error(err))
 			}
-			bigFilePath = bigFilePath + ".gz"
 		}
 		if nologs {
 			os.Remove(path)
 		}
-		sz, _ := fsutil.Size(bigFilePath)
-		logger.Info("final file created", zap.String("size", sz))
 	}
 	if len(dumpWorkerErrors.Load().([]error)) > 0 {
 		var collectedErrors strings.Builder
