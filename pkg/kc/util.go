@@ -305,15 +305,17 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		if nologs {
 			os.Remove(path)
 		}
-		if len(dumpWorkerErrors.Load().([]error)) > 0 {
-			var collectedErrors strings.Builder
-			for _, e := range dumpWorkerErrors.Load().([]error) {
-				collectedErrors.WriteString(e.Error())
-				collectedErrors.WriteString("\n")
-			}
-			if collectedErrors.Len() > 0 {
-				return errors.New(collectedErrors.String())
-			}
+		sz, _ := fsutil.Size(bigFilePath)
+		logger.Info("final file created", zap.String("size", sz))
+	}
+	if len(dumpWorkerErrors.Load().([]error)) > 0 {
+		var collectedErrors strings.Builder
+		for _, e := range dumpWorkerErrors.Load().([]error) {
+			collectedErrors.WriteString(e.Error())
+			collectedErrors.WriteString("\n")
+		}
+		if collectedErrors.Len() > 0 {
+			return errors.New(collectedErrors.String())
 		}
 	}
 	return nil
