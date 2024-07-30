@@ -37,22 +37,22 @@ var (
 	logger = log.Logger().Named("kcdump.main")
 
 	// cli dump options
-	home        string
-	gzip        bool
-	tgz         bool
-	prune       bool
-	nologs      bool
-	ns          bool
-	dontsplitns bool
-	dontsplitgv bool
-	gvk         bool
-	xns         nsExcludeList
-	xgvk        gvkExcludeList
-	targetDir   string
-	format      string
-	kubeconfig  string
-	context     string
-	logLevel    string
+	home       string
+	gzip       bool
+	tgz        bool
+	prune      bool
+	getlogs    bool
+	ns         bool
+	splitns    bool
+	splitgv    bool
+	gvk        bool
+	xns        nsExcludeList
+	xgvk       gvkExcludeList
+	targetDir  string
+	format     string
+	kubeconfig string
+	context    string
+	logLevel   string
 )
 
 func init() {
@@ -69,21 +69,21 @@ func init() {
 }
 
 func main() {
-	flag.BoolVar(&nologs, "nologs", false, "do not output pod's logs")
-	flag.BoolVar(&gzip, "gzip", false, "gzip output")
+	flag.BoolVar(&getlogs, "getlogs", false, "get pod's logs?")
+	flag.BoolVar(&gzip, "gzip", true, "gzip output")
 	flag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option.")
 	flag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing.")
 	flag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit")
 	flag.BoolVar(&gvk, "gvk", false, "print (filtered or not) group version kind with format 'gv,k' and exit")
-	flag.BoolVar(&dontsplitns, "dontSplitns", false, "do not split namespaced items into directories with their namespace name")
-	flag.BoolVar(&dontsplitgv, "dontSplitgv", false, "do not split groupVersion in separate files. implies -dontSplitns and -format 'yaml' or 'json_lines'. ignores -tgz. a big file is created with everything inside.")
+	flag.BoolVar(&splitns, "splitns", false, "split namespaced items into directories with their namespace name")
+	flag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside.")
 	flag.Var(&xns, "xns", "regex to match and exclude unwanted namespaces. can be used multiple times.")
 	flag.Var(&xgvk, "xgvk", "regex to match and exclude unwanted groupVersion and kind. format is 'gv,k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk metrics.*,Pod.*. can be used multiple times.")
 	flag.StringVar(&targetDir, "targetDir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
-	flag.StringVar(&format, "format", "yaml", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
+	flag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
 	flag.StringVar(&kubeconfig, "kubeconfig", filepath.FromSlash(home+"/.kube/config"), "kubeconfig file or read from stdin.")
 	flag.StringVar(&context, "context", kc.CurrentContext, "kube config context to use")
-	flag.StringVar(&logLevel, "logLevel", "fatal", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
+	flag.StringVar(&logLevel, "logLevel", "error", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
 
 	flag.Parse()
 
@@ -139,7 +139,7 @@ func dump() int {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 7
 	}
-	if e = kc.Dump(targetDir, xns, xgvk, nologs, gzip, tgz, prune, !dontsplitns, !dontsplitgv, outputfmt, 10, 25, nil); e != nil {
+	if e = kc.Dump(targetDir, xns, xgvk, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, 10, 25, nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}
