@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +21,8 @@ import (
 )
 
 const (
+	// JSON                    = "json"
+	// YAML                    = "yaml"
 	TokenPath               = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	CurrentContext          = ".current-context"
 	queryContextForCluster  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .clusters[] | select(.name == $ctx.cluster) | .cluster.server // ""`
@@ -58,7 +59,7 @@ type (
 		ApiResources() (string, error)
 		Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, progress func()) error
 		setCert(cert []byte, key []byte)
-		response(resp *resty.Response, yamlOutput bool) (string, error)
+		// response(resp *resty.Response, yamlOutput bool) (string, error)
 		send(method string, apiCall string, body string) (string, error)
 		get(apiCall string, yamlOutput bool) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
@@ -289,12 +290,20 @@ func (kc *kc) Get(apiCall string) (string, error) {
 
 func (kc *kc) get(apiCall string, yamlOutput bool) (string, error) {
 	kc.api = apiCall
-	resp, err := kc.client.R().Get(apiCall)
+	accept := "application/yaml"
+	if !yamlOutput {
+		accept = "application/json"
+	}
+	resp, err := kc.client.R().SetHeader("Accept", accept).Get(apiCall)
 	if err != nil {
 		return "", err
 	}
 	logResponse(apiCall, resp)
-	kc.resp, kc.err = kc.response(resp, yamlOutput)
+	// kc.resp, kc.err = kc.response(resp, yamlOutput)
+	kc.resp = string(resp.Body())
+	if resp.StatusCode() >= 400 {
+		kc.err = errors.New(resp.Status() + "\n" + kc.resp)
+	}
 	if kc.transformer != nil {
 		kc.resp, kc.err = kc.transformer(kc)
 	}
@@ -329,7 +338,12 @@ func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
 		kc.resp, kc.err = "", nil
 		return kc.resp, kc.err
 	}
-	return kc.response(resp, true)
+	kc.resp = string(resp.Body())
+	if resp.StatusCode() >= 400 {
+		kc.err = errors.New(resp.Status() + "\n" + kc.resp)
+		return "", kc.err
+	}
+	return kc.resp, nil
 }
 
 func (kc *kc) Version() string {
@@ -379,29 +393,29 @@ func logResponse(api string, resp *resty.Response) {
 	logger.Debug("http resp", zapFields...)
 }
 
-func (kc *kc) response(resp *resty.Response, yamlOutput bool) (string, error) {
-	kc.status = resp.StatusCode()
-	contentType := strings.ToLower(resp.Header().Get("Content-Type"))
-	body := string(resp.Body())
-	if resp.StatusCode() >= 400 {
-		if strings.Contains(contentType, "json") && yamlOutput {
-			if ymlBody, err := yjq.J2Y(body); err == nil {
-				body = ymlBody
-			}
-		}
-		return "", errors.New(resp.Status() + "\n" + body)
-	}
-	if strings.Contains(contentType, "json") {
-		var err error
-		if yamlOutput {
-			body, err = yjq.J2Y(body)
-		}
-		if err != nil {
-			return "", err
-		}
-	}
-	return body, nil
-}
+// func (kc *kc) response(resp *resty.Response, yamlOutput bool) (string, error) {
+// 	kc.status = resp.StatusCode()
+// 	contentType := strings.ToLower(resp.Header().Get("Content-Type"))
+// 	body := string(resp.Body())
+// 	if resp.StatusCode() >= 400 {
+// 		if strings.Contains(contentType, "json") && yamlOutput {
+// 			if ymlBody, err := yjq.J2Y(body); err == nil {
+// 				body = ymlBody
+// 			}
+// 		}
+// 		return "", errors.New(resp.Status() + "\n" + body)
+// 	}
+// 	if strings.Contains(contentType, "json") {
+// 		var err error
+// 		if yamlOutput {
+// 			body, err = yjq.J2Y(body)
+// 		}
+// 		if err != nil {
+// 			return "", err
+// 		}
+// 	}
+// 	return body, nil
+// }
 
 func (kc *kc) send(method string, apiCall string, body string) (string, error) {
 	if kc.readOnly {
@@ -433,7 +447,7 @@ func (kc *kc) send(method string, apiCall string, body string) (string, error) {
 	}
 	if kc.err == nil {
 		logResponse(apiCall, res)
-		kc.resp, kc.err = kc.response(res, true)
+		kc.resp = string(res.Body())
 	}
 	return kc.resp, kc.err
 }

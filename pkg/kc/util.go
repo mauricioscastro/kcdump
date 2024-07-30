@@ -239,7 +239,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if err = joinChunks(path, format, _gz); err != nil {
 		return err
 	}
-	version, err := kc.Get("/version")
+	version, err := kc.GetJson("/version")
 	if err != nil {
 		return err
 	}
