@@ -12,7 +12,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 | Option | Description |
 | ----------- | ----------- |
 | context  | kube config context to use (default ".current-context") |
-| splitgv |	split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside. |
+| splitgv |	split groupVersion in separate files. when false will force -splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside. |
 | splitns | do not split namespaced items into directories with their namespace name |
 | format | output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "yaml") |
 | gvk | print (filtered or not) group version kind with format 'gv,k' and exit |
@@ -30,7 +30,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 ### How I use it in the operator
 In the operator it is used as a library, but the command line counterpart would be:
 ```bash
-> kcdump -splitgv false -format json_lines -getlogs false -gzip
+> kcdump -splitgv=false -format=json_lines -getlogs=false -gzip=false
 ```
 Those are the default options, similar to just calling `> kcdump` . With this, a big gziped json file is created. This big json is later loaded by the [dumpdb](./dumpdb/) container for manipulation with Postgres SQL queries.
 
