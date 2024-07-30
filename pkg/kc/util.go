@@ -243,6 +243,12 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if err != nil {
 		return err
 	}
+	if format == YAML {
+		version, err = yjq.J2Y(version)
+		if err != nil {
+			return err
+		}
+	}
 	if version, err = yjq.YqEval(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
 		return err
 	}
