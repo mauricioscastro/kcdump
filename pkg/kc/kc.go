@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreybutler/go-fsutil"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -163,8 +164,17 @@ func NewKcWithConfigContext(config string, context string) Kc {
 			return nil
 		}
 		if len(cert) == 0 {
-			logger.Error("empty user cert info reading context. nothing else to try for auth. returning...")
-			return nil
+			// is it in a file?
+			cert, err = yjq.YqEval(fmt.Sprintf(queryContextForUserAuth, context, `client-certificate // ""`), kubeCfg)
+			if err != nil || len(cert) == 0 {
+				logger.Error("reading user cert info for context or empty cert file", zap.Error(err))
+				return nil
+			}
+			cert, err = fsutil.ReadTextFile(cert)
+			if err != nil || len(cert) == 0 {
+				logger.Error("reading user cert from file or empty cert file", zap.Error(err))
+				return nil
+			}
 		}
 		logger.Debug("", zap.String("cert", cert))
 		key, err := yjq.YqEval(fmt.Sprintf(queryContextForUserAuth, context, `client-key-data // "" | @base64d`), kubeCfg)
@@ -173,8 +183,17 @@ func NewKcWithConfigContext(config string, context string) Kc {
 			return nil
 		}
 		if len(key) == 0 {
-			logger.Error("empty user cert key info reading context. nothing else to try for auth. returning...")
-			return nil
+			// is it in a file?
+			key, err = yjq.YqEval(fmt.Sprintf(queryContextForUserAuth, context, `client-key // ""`), kubeCfg)
+			if err != nil || len(key) == 0 {
+				logger.Error("reading user cert key info for context or empty key file", zap.Error(err))
+				return nil
+			}
+			key, err = fsutil.ReadTextFile(key)
+			if err != nil || len(key) == 0 {
+				logger.Error("reading user cert key from file or empty key file", zap.Error(err))
+				return nil
+			}
 		}
 		logger.Debug("", zap.String("key", "XXX"))
 		kc.setCert([]byte(cert), []byte(key))
