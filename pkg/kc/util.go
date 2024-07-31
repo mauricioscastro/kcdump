@@ -569,19 +569,19 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 			return "", err
 		}
 	}
-	if name == "packagemanifests" && gv == "packages.operators.coreos.com/v1" {
-		cleanApiResource, err = yjq.YqEval(`with(.items[].status.channels[].currentCSVDesc; del(.description) | del (.annotations.alm-examples) | del(.annotations."operatorframework.io/initialization-resource") | del(.annotations."operatorframework.io/suggested-namespace-template"))`, cleanApiResource)
-		if err != nil {
-			return "", err
-		}
-		// logger.Info("packagemanifests cleaned")
-	}
-	if name == "configmaps" {
-		cleanApiResource, err = yjq.YqEval(`del(.items[].metadata.annotations."kubernetes.io/description")`, cleanApiResource)
-		if err != nil {
-			return "", err
-		}
-	}
+	// if name == "packagemanifests" && gv == "packages.operators.coreos.com/v1" {
+	// 	cleanApiResource, err = yjq.YqEval(`with(.items[].status.channels[].currentCSVDesc; del(.description) | del (.annotations.alm-examples) | del(.annotations."operatorframework.io/initialization-resource") | del(.annotations."operatorframework.io/suggested-namespace-template"))`, cleanApiResource)
+	// 	if err != nil {
+	// 		return "", err
+	// 	}
+	// 	// logger.Info("packagemanifests cleaned")
+	// }
+	// if name == "configmaps" {
+	// 	cleanApiResource, err = yjq.YqEval(`del(.items[].metadata.annotations."kubernetes.io/description")`, cleanApiResource)
+	// 	if err != nil {
+	// 		return "", err
+	// 	}
+	// }
 	return cleanApiResource, nil
 }
 
@@ -655,14 +655,6 @@ func formatResourceContent(contents string, format int, chunked bool) (string, e
 		if newcontent, err = yjq.Y2JC(contents); err != nil {
 			return "", err
 		}
-		newcontent = strings.ReplaceAll(newcontent, `\\\\`, ``)
-		newcontent = strings.ReplaceAll(newcontent, `\\`, ``)
-		newcontent = strings.ReplaceAll(newcontent, `\n`, ``)
-		newcontent = strings.ReplaceAll(newcontent, `\"`, `'`)
-		newcontent = strings.ReplaceAll(newcontent, `\t`, ``)
-		newcontent = strings.ReplaceAll(newcontent, `\r`, ``)
-		newcontent = strings.ReplaceAll(newcontent, `\b`, ``)
-		newcontent = strings.ReplaceAll(newcontent, `\f`, ``)
 	}
 	switch format {
 	case YAML:

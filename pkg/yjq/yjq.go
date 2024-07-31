@@ -130,6 +130,12 @@ func JqEval2Y(expr string, input string, param ...any) (string, error) {
 	return jq(expr, input, true, param...)
 }
 
+func EscapeJsonEncodedStrings(input string) (string, error) {
+	escapeEncodedString = true
+	defer func() { escapeEncodedString = false }()
+	return jq(".", input, false)
+}
+
 func jq(expr string, json string, yamlOutput bool, param ...any) (string, error) {
 	query, err := gojq.Parse(fmt.Sprintf(expr, param...))
 	if err != nil {
@@ -186,7 +192,7 @@ func jq(expr string, json string, yamlOutput bool, param ...any) (string, error)
 }
 
 func jsonEnc(v any, w io.Writer) error {
-	if r, e := gojq.Marshal(v); e != nil {
+	if r, e := Marshal(v); e != nil {
 		return e
 	} else {
 		w.Write(r)
