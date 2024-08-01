@@ -702,10 +702,7 @@ func apiIgnoreNotFoundResponseTransformer(kc Kc) (string, error) {
 }
 
 func writeResourceListLog(msg string, err error) error {
-	errList := dumpWorkerErrors.Load()
-	if errList != nil {
-		dumpWorkerErrors.Store(append(errList.([]error), fmt.Errorf("%s %w", msg, err)))
-	}
+	dumpWorkerErrors.Store(append(dumpWorkerErrors.Load().([]error), fmt.Errorf("%s %w", msg, err)))
 	logger.Error("writeResourceList "+msg, zap.Error(err))
 	return err
 }
