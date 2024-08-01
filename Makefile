@@ -3,6 +3,11 @@ IMG ?= kcdump:latest
 CONTAINER_FILE ?= Containerfile
 BUILD_DIR ?= .
 
+#make IMG=quay.io/hcreport/kcdump container-build
+#make IMG=quay.io/hcreport/kcdump container-push
+#make BUILD_DIR=dumpdb IMG=quay.io/hcreport/dumpdb container-build
+#make IMG=quay.io/hcreport/dumpdb container-push
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin

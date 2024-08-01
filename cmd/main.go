@@ -50,6 +50,7 @@ var (
 	xgvk       gvkExcludeList
 	targetDir  string
 	format     string
+	escapeJson bool
 	kubeconfig string
 	context    string
 	logLevel   string
@@ -69,18 +70,19 @@ func init() {
 }
 
 func main() {
-	flag.BoolVar(&getlogs, "getlogs", false, "get pod's logs?")
+	flag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (default false)")
 	flag.BoolVar(&gzip, "gzip", true, "gzip output")
-	flag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option.")
-	flag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing.")
-	flag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit")
-	flag.BoolVar(&gvk, "gvk", false, "print (filtered or not) group version kind with format 'gv,k' and exit")
-	flag.BoolVar(&splitns, "splitns", false, "split namespaced items into directories with their namespace name")
-	flag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside.")
+	flag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
+	flag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
+	flag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit (default false)")
+	flag.BoolVar(&gvk, "gvk", false, "print (filtered or not) group version kind with format 'gv,k' and exit (default false)")
+	flag.BoolVar(&splitns, "splitns", false, "split namespaced items into directories with their namespace name (default false)")
+	flag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside (default false)")
 	flag.Var(&xns, "xns", "regex to match and exclude unwanted namespaces. can be used multiple times.")
 	flag.Var(&xgvk, "xgvk", "regex to match and exclude unwanted groupVersion and kind. format is 'gv,k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk metrics.*,Pod.*. can be used multiple times.")
 	flag.StringVar(&targetDir, "targetDir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
 	flag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
+	flag.BoolVar(&escapeJson, "escapeJson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column.")
 	flag.StringVar(&kubeconfig, "kubeconfig", filepath.FromSlash(home+"/.kube/config"), "kubeconfig file or read from stdin.")
 	flag.StringVar(&context, "context", kc.CurrentContext, "kube config context to use")
 	flag.StringVar(&logLevel, "logLevel", "error", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
@@ -97,12 +99,17 @@ func dump() int {
 		fmt.Fprintf(os.Stderr, "unable to start k8s client from config file '%s' and context '%s'\n", kubeconfig, context)
 		os.Exit(-1)
 	}
+	outputfmt, e := Kc.FormatCodeFromString(format)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
+		return 7
+	}
 	if ns {
 		n, e := kc.Ns()
 		if e != nil {
 			return 1
 		}
-		n, e = Kc.FilterNS(n, xns, true)
+		n, e = Kc.FilterNS(n, xns, outputfmt, true)
 		if e != nil {
 			return 2
 		}
@@ -119,7 +126,7 @@ func dump() int {
 		if e != nil {
 			return 4
 		}
-		g, e = Kc.FilterApiResources(g, xgvk)
+		g, e = Kc.FilterApiResources(g, xgvk, outputfmt)
 		if e != nil {
 			return 5
 		}
@@ -134,12 +141,7 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	outputfmt, e := Kc.FormatCodeFromString(format)
-	if e != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
-		return 7
-	}
-	if e = kc.Dump(targetDir, xns, xgvk, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, 10, 25, nil); e != nil {
+	if e := kc.Dump(targetDir, xns, xgvk, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, 10, 25, escapeJson, nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}

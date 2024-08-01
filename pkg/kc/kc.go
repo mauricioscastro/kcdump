@@ -20,9 +20,15 @@ import (
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 )
 
+// cmd exec in pod:
+// 'https://cluster:443/api/v1/namespaces/exec/pods/shell-demo/exec?command=ls&container=loop&stderr=true&stdout=true'
+//
+// cp to pod:
+// -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: oc/4.11.0 (linux/amd64) kubernetes/262ac9c" 'https://192.168.49.2:8443/api/v1/namespaces/hcr/pods/dumpdb-59f55f8cc7-lqp7n/exec?command=tar&command=-xmf&command=-&command=-C&command=%2Ftmp&container=dumpdb&stderr=true&stdin=true&stdout=true'
+
 const (
-	// JSON                    = "json"
-	// YAML                    = "yaml"
+	Json                    = "json"
+	Yaml                    = "yaml"
 	TokenPath               = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	CurrentContext          = ".current-context"
 	queryContextForCluster  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .clusters[] | select(.name == $ctx.cluster) | .cluster.server // ""`
@@ -41,13 +47,14 @@ type (
 		SetCert(cert tls.Certificate) Kc
 		SetCluster(cluster string) Kc
 		Get(apiCall string) (string, error)
-		GetJson(apiCall string) (string, error)
+		// GetJson(apiCall string) (string, error)
 		Apply(apiCall string, body string) (string, error)
 		Create(apiCall string, body string) (string, error)
 		Replace(apiCall string, body string) (string, error)
 		Delete(apiCall string, ignoreNotFound bool) (string, error)
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
+		Accept(format string) Kc
 		SetResponseTransformer(transformer ResponseTransformer) Kc
 		Version() string
 		Response() string
@@ -57,11 +64,11 @@ type (
 		Api() string
 		Ns() (string, error)
 		ApiResources() (string, error)
-		Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, progress func()) error
+		Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error
 		setCert(cert []byte, key []byte)
 		// response(resp *resty.Response, yamlOutput bool) (string, error)
 		send(method string, apiCall string, body string) (string, error)
-		get(apiCall string, yamlOutput bool) (string, error)
+		// get(apiCall string, yamlOutput bool) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
 	}
 
@@ -73,6 +80,7 @@ type (
 		resp        string
 		err         error
 		status      int
+		accept      string
 		transformer ResponseTransformer
 	}
 	// Optional transformer function to Get methods
@@ -96,7 +104,7 @@ func NewKc() Kc {
 	if err != nil {
 		logger.Debug("could not read default sa token. skipping to kubeconfig", zap.Error(err))
 	} else {
-		logger.Debug("", zap.String("token from sa account", "XXX"))
+		logger.Debug("", zap.String("token from sa account", "x-x-x-x-x"))
 		host := os.Getenv("KUBERNETES_SERVICE_HOST")
 		port := os.Getenv("KUBERNETES_SERVICE_PORT_HTTPS")
 		if host != "" && port != "" {
@@ -196,10 +204,10 @@ func NewKcWithConfigContext(config string, context string) Kc {
 				return nil
 			}
 		}
-		logger.Debug("", zap.String("key", "XXX"))
+		logger.Debug("", zap.String("key", "x-x-x-x-x"))
 		kc.setCert([]byte(cert), []byte(key))
 	} else {
-		logger.Debug("", zap.String("token from kube config", "XXX"))
+		logger.Debug("", zap.String("token from kube config", "x-x-x-x-x"))
 		kc.SetToken(token)
 	}
 	logger.Debug("kc will auth with kube config")
@@ -234,6 +242,7 @@ func newKc() Kc {
 		SetRetryWaitTime(500*time.Millisecond).
 		SetHeader("User-Agent", "kc/v.0.0.0")
 	kc.readOnly = false
+	kc.accept = "application/yaml"
 	yjq.SilenceYqLogs()
 	return &kc
 }
@@ -259,6 +268,15 @@ func (kc *kc) SetCert(cert tls.Certificate) Kc {
 	return kc
 }
 
+func (kc *kc) Accept(format string) Kc {
+	if format != Json && format != Yaml {
+		logger.Error("wrong accept format " + format + ". will use yaml")
+		format = Yaml
+	}
+	kc.accept = "application/" + format
+	return kc
+}
+
 func (kc *kc) SetResponseTransformer(transformer ResponseTransformer) Kc {
 	kc.transformer = transformer
 	return kc
@@ -280,28 +298,17 @@ func (kc *kc) Api() string {
 	return kc.api
 }
 
-func (kc *kc) GetJson(apiCall string) (string, error) {
-	return kc.get(apiCall, false)
-}
-
 func (kc *kc) Get(apiCall string) (string, error) {
-	return kc.get(apiCall, true)
-}
-
-func (kc *kc) get(apiCall string, yamlOutput bool) (string, error) {
 	kc.api = apiCall
-	accept := "application/yaml"
-	if !yamlOutput {
-		accept = "application/json"
-	}
-	resp, err := kc.client.R().SetHeader("Accept", accept).Get(apiCall)
+	resp, err := kc.client.R().SetHeader("Accept", kc.accept).Get(apiCall)
 	if err != nil {
 		return "", err
 	}
 	logResponse(apiCall, resp)
 	// kc.resp, kc.err = kc.response(resp, yamlOutput)
+	kc.status = resp.StatusCode()
 	kc.resp = string(resp.Body())
-	if resp.StatusCode() >= 400 {
+	if kc.status >= 400 {
 		kc.err = errors.New(resp.Status() + "\n" + kc.resp)
 	}
 	if kc.transformer != nil {
@@ -350,7 +357,7 @@ func (kc *kc) Version() string {
 	c, _ := cache.Load(kc.cluster)
 	ce := c.(cacheEntry)
 	if ce.version == "" {
-		kc.GetJson("/api")
+		kc.Accept(Json).Get("/api")
 		if kc.err == nil {
 			ce.version, kc.err = yjq.JqEval(`.versions[-1] // ""`, kc.resp)
 		}
@@ -417,7 +424,7 @@ func logResponse(api string, resp *resty.Response) {
 // 	return body, nil
 // }
 
-func (kc *kc) send(method string, apiCall string, body string) (string, error) {
+func (kc *kc) send(method string, apiCall string, yamlBody string) (string, error) {
 	if kc.readOnly {
 		kc.resp, kc.err = "", errors.New("trying to write in read only mode")
 		return kc.resp, kc.err
@@ -427,20 +434,20 @@ func (kc *kc) send(method string, apiCall string, body string) (string, error) {
 	switch {
 	case http.MethodPatch == method:
 		res, kc.err = kc.client.R().
-			SetBody(body).
+			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetHeader("Content-Type", "application/apply-patch+yaml").
 			Patch(apiCall)
 	case http.MethodPost == method:
 		res, kc.err = kc.client.R().
-			SetBody(body).
+			SetBody(yamlBody).
 			SetHeader("Content-Type", "application/yaml").
 			Post(apiCall)
 	case http.MethodPut == method:
-		body, kc.err = kc.setResourceVersion(apiCall, body)
+		yamlBody, kc.err = kc.setResourceVersion(apiCall, yamlBody)
 		if kc.err == nil {
 			res, kc.err = kc.client.R().
-				SetBody(body).
+				SetBody(yamlBody).
 				SetHeader("Content-Type", "application/yaml").
 				Put(apiCall)
 		}
@@ -453,7 +460,7 @@ func (kc *kc) send(method string, apiCall string, body string) (string, error) {
 }
 
 func (kc *kc) setResourceVersion(apiCall string, newResource string) (string, error) {
-	r, err := kc.GetJson(apiCall)
+	r, err := kc.Accept(Json).Get(apiCall)
 	if err != nil {
 		return "", err
 	}
