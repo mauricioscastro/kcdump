@@ -205,6 +205,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		}()
 	}
 	wg.Wait()
+	// concat chunks
 	if err = joinChunks(path, format, gz); err != nil {
 		return err
 	}
@@ -213,61 +214,17 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		return err
 	}
 	if tgz {
-		tgzpath := path[:len(path)-1] + ".tar"
-		if err = archive(path, tgzpath); err != nil {
-			logger.Error("tape archiving error", zap.Error(err))
+		if err = tgzAndPrune(path, prune); err != nil {
 			return err
 		}
-		if err = gzip(tgzpath); err != nil {
-			logger.Error("gzip error", zap.Error(err))
-		}
-		if prune {
-			os.RemoveAll(path)
-		}
 	}
+	// create big fat file
 	if !splitgv {
-		bigFileName := dumpDir
-		if format == YAML {
-			bigFileName = bigFileName + ".yaml"
-		} else {
-			bigFileName = bigFileName + ".json"
-		}
-		bigFilePath := strings.Replace(path, dumpDir+"/", "", -1) + bigFileName
-		logger.Info("joining extracted into a single file " + bigFilePath)
-		separator := "\n"
-		if format == YAML {
-			separator = "\n---\n"
-		}
-		bigFile, err := os.OpenFile(bigFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
+		if err = joinAll(path, dumpDir, format, gz, nologs); err != nil {
 			return err
-		}
-		l, err := fsutil.ListFiles(path, false)
-		if err != nil {
-			return err
-		}
-		for fi, f := range l {
-			if fi > 0 {
-				if _, err := bigFile.WriteString(separator); err != nil {
-					return err
-				}
-			}
-			if err := copyFile(f, bigFile); err != nil {
-				return err
-			}
-			os.Remove(f)
-		}
-		bigFile.Close()
-		if gz {
-			if err = gzip(bigFilePath); err != nil {
-				logger.Error("gzip error", zap.Error(err))
-			}
-			logger.Info("gzipped " + bigFilePath)
-		}
-		if nologs {
-			os.Remove(path)
 		}
 	}
+	// collect raised errors by async routines
 	if len(dumpWorkerErrors.Load().([]error)) > 0 {
 		var collectedErrors strings.Builder
 		for _, e := range dumpWorkerErrors.Load().([]error) {
@@ -279,6 +236,66 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		}
 	}
 	logger.Info("finished dumping cluster " + kc.cluster)
+	return nil
+}
+
+func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) error {
+	bigFileName := dumpDir
+	if format == YAML {
+		bigFileName = bigFileName + ".yaml"
+	} else {
+		bigFileName = bigFileName + ".json"
+	}
+	bigFilePath := strings.Replace(path, dumpDir+"/", "", -1) + bigFileName
+	logger.Info("joining extracted into a single file " + bigFilePath)
+	separator := "\n"
+	if format == YAML {
+		separator = "\n---\n"
+	}
+	bigFile, err := os.OpenFile(bigFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	l, err := fsutil.ListFiles(path, false)
+	if err != nil {
+		return err
+	}
+	for fi, f := range l {
+		if fi > 0 {
+			if _, err := bigFile.WriteString(separator); err != nil {
+				return err
+			}
+		}
+		if err := copyFile(f, bigFile); err != nil {
+			return err
+		}
+		os.Remove(f)
+	}
+	bigFile.Close()
+	if gz {
+		if err = gzip(bigFilePath); err != nil {
+			logger.Error("gzip error", zap.Error(err))
+		}
+		logger.Info("gzipped " + bigFilePath)
+	}
+	if nologs {
+		os.Remove(path)
+	}
+	return nil
+}
+
+func tgzAndPrune(path string, prune bool) error {
+	tgzpath := path[:len(path)-1] + ".tar"
+	if err := archive(path, tgzpath); err != nil {
+		logger.Error("tape archiving error", zap.Error(err))
+		return err
+	}
+	if err := gzip(tgzpath); err != nil {
+		logger.Error("gzip error", zap.Error(err))
+	}
+	if prune {
+		os.RemoveAll(path)
+	}
 	return nil
 }
 
@@ -685,7 +702,10 @@ func apiIgnoreNotFoundResponseTransformer(kc Kc) (string, error) {
 }
 
 func writeResourceListLog(msg string, err error) error {
-	dumpWorkerErrors.Store(append(dumpWorkerErrors.Load().([]error), fmt.Errorf("%s %w", msg, err)))
+	errList := dumpWorkerErrors.Load()
+	if errList != nil {
+		dumpWorkerErrors.Store(append(errList.([]error), fmt.Errorf("%s %w", msg, err)))
+	}
 	logger.Error("writeResourceList "+msg, zap.Error(err))
 	return err
 }

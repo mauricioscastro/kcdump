@@ -47,7 +47,6 @@ type (
 		SetCert(cert tls.Certificate) Kc
 		SetCluster(cluster string) Kc
 		Get(apiCall string) (string, error)
-		// GetJson(apiCall string) (string, error)
 		Apply(apiCall string, body string) (string, error)
 		Create(apiCall string, body string) (string, error)
 		Replace(apiCall string, body string) (string, error)
@@ -399,30 +398,6 @@ func logResponse(api string, resp *resty.Response) {
 	}
 	logger.Debug("http resp", zapFields...)
 }
-
-// func (kc *kc) response(resp *resty.Response, yamlOutput bool) (string, error) {
-// 	kc.status = resp.StatusCode()
-// 	contentType := strings.ToLower(resp.Header().Get("Content-Type"))
-// 	body := string(resp.Body())
-// 	if resp.StatusCode() >= 400 {
-// 		if strings.Contains(contentType, "json") && yamlOutput {
-// 			if ymlBody, err := yjq.J2Y(body); err == nil {
-// 				body = ymlBody
-// 			}
-// 		}
-// 		return "", errors.New(resp.Status() + "\n" + body)
-// 	}
-// 	if strings.Contains(contentType, "json") {
-// 		var err error
-// 		if yamlOutput {
-// 			body, err = yjq.J2Y(body)
-// 		}
-// 		if err != nil {
-// 			return "", err
-// 		}
-// 	}
-// 	return body, nil
-// }
 
 func (kc *kc) send(method string, apiCall string, yamlBody string) (string, error) {
 	if kc.readOnly {
