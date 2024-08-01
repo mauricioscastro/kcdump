@@ -364,13 +364,15 @@ func getVersion(kc *kc, path string, format int, gz bool) error {
 	if err != nil {
 		return err
 	}
+	yq := yjq.YqEvalJ2JC
 	if format == YAML {
 		version, err = yjq.J2Y(version)
 		if err != nil {
 			return err
 		}
+		yq = yjq.YqEval
 	}
-	if version, err = yjq.YqEval(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
+	if version, err = yq(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
 		return err
 	}
 	// version can't be split since it is not presented as a ResourceList
