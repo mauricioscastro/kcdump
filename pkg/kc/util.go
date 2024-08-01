@@ -123,7 +123,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
 		return fmt.Errorf("unknown format")
 	}
-	// logger.Debug("dump", zap.String("path", path), zap.Strings(s))
+	gzBigFile := gz
 	if tgz || !splitgv { // only gzip in the end after archiving or after concatenating
 		gz = false
 	}
@@ -220,7 +220,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	}
 	// create big fat file
 	if !splitgv {
-		if err = joinAll(path, dumpDir, format, gz, nologs); err != nil {
+		if err = joinAll(path, dumpDir, format, gzBigFile, nologs); err != nil {
 			return err
 		}
 	}
