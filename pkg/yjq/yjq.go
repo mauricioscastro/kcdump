@@ -123,20 +123,18 @@ func Eval2List(evalFunc EvalFunc, expr string, input string, param ...any) ([]st
 }
 
 func JqEval(expr string, input string, param ...any) (string, error) {
-	return jq(expr, input, false, param...)
+	return jq(expr, input, false, false, param...)
 }
 
 func JqEval2Y(expr string, input string, param ...any) (string, error) {
-	return jq(expr, input, true, param...)
+	return jq(expr, input, true, false, param...)
 }
 
 func EscapeJsonEncodedStrings(input string) (string, error) {
-	escapeEncodedString = true
-	defer func() { escapeEncodedString = false }()
-	return jq(".", input, false)
+	return jq(".", input, false, true)
 }
 
-func jq(expr string, json string, yamlOutput bool, param ...any) (string, error) {
+func jq(expr string, json string, yamlOutput bool, escapeEncodedString bool, param ...any) (string, error) {
 	query, err := gojq.Parse(fmt.Sprintf(expr, param...))
 	if err != nil {
 		return "", err
@@ -181,7 +179,7 @@ func jq(expr string, json string, yamlOutput bool, param ...any) (string, error)
 			if yamlOutput {
 				err = yamlEnc(v, &out)
 			} else {
-				err = jsonEnc(v, &out)
+				err = jsonEnc(v, &out, escapeEncodedString)
 			}
 		}
 		if err != nil {
@@ -191,8 +189,8 @@ func jq(expr string, json string, yamlOutput bool, param ...any) (string, error)
 	return string(bytes.TrimRight(out.Bytes(), "\n")), nil
 }
 
-func jsonEnc(v any, w io.Writer) error {
-	if r, e := Marshal(v); e != nil {
+func jsonEnc(v any, w io.Writer, escapeEncodedString bool) error {
+	if r, e := Marshal(v, escapeEncodedString); e != nil {
 		return e
 	} else {
 		w.Write(r)

@@ -17,7 +17,7 @@ import (
 // A Postgres DB. THE ORIGINAL CODE IS HERE:
 // https://github.com/itchyny/gojq/blob/main/encoder.go
 
-var escapeEncodedString = false
+// var escapeEncodedString = false
 
 // Marshal returns the jq-flavored JSON encoding of v.
 //
@@ -28,20 +28,20 @@ var escapeEncodedString = false
 // escape '<', '>', '&', '\u2028', and '\u2029'. These behaviors are based on
 // the marshaler of jq command, and different from json.Marshal in the Go
 // standard library. Note that the result is not safe to embed in HTML.
-func Marshal(v any) ([]byte, error) {
+func Marshal(v any, escapeEncodedString bool) ([]byte, error) {
 	var b bytes.Buffer
-	(&encoder{w: &b}).encode(v)
+	(&encoder{w: &b}).encode(v, escapeEncodedString)
 	return b.Bytes(), nil
 }
 
-func jsonMarshal(v any) string {
+func jsonMarshal(v any, escapeEncodedString bool) string {
 	var sb strings.Builder
-	(&encoder{w: &sb}).encode(v)
+	(&encoder{w: &sb}).encode(v, escapeEncodedString)
 	return sb.String()
 }
 
-func jsonEncodeString(sb *strings.Builder, v string) {
-	(&encoder{w: sb}).encodeString(v)
+func jsonEncodeString(sb *strings.Builder, v string, escapeEncodedString bool) {
+	(&encoder{w: sb}).encodeString(v, escapeEncodedString)
 }
 
 type encoder struct {
@@ -53,7 +53,7 @@ type encoder struct {
 	buf [64]byte
 }
 
-func (e *encoder) encode(v any) {
+func (e *encoder) encode(v any, escapeEncodedString bool) {
 	switch v := v.(type) {
 	case nil:
 		e.w.WriteString("null")
@@ -70,11 +70,11 @@ func (e *encoder) encode(v any) {
 	case *big.Int:
 		e.w.Write(v.Append(e.buf[:0], 10))
 	case string:
-		e.encodeString(v)
+		e.encodeString(v, escapeEncodedString)
 	case []any:
-		e.encodeArray(v)
+		e.encodeArray(v, escapeEncodedString)
 	case map[string]any:
-		e.encodeObject(v)
+		e.encodeObject(v, escapeEncodedString)
 	default:
 		panic(fmt.Sprintf("invalid type: %[1]T (%[1]v)", v))
 	}
@@ -107,7 +107,7 @@ func (e *encoder) encodeFloat64(f float64) {
 }
 
 // ref: encodeState#string in encoding/json
-func (e *encoder) encodeString(s string) {
+func (e *encoder) encodeString(s string, escapeEncodedString bool) {
 	e.w.WriteByte('"')
 	start := 0
 	for i := 0; i < len(s); {
@@ -168,18 +168,18 @@ func (e *encoder) encodeString(s string) {
 	e.w.WriteByte('"')
 }
 
-func (e *encoder) encodeArray(vs []any) {
+func (e *encoder) encodeArray(vs []any, escapeEncodedString bool) {
 	e.w.WriteByte('[')
 	for i, v := range vs {
 		if i > 0 {
 			e.w.WriteByte(',')
 		}
-		e.encode(v)
+		e.encode(v, escapeEncodedString)
 	}
 	e.w.WriteByte(']')
 }
 
-func (e *encoder) encodeObject(vs map[string]any) {
+func (e *encoder) encodeObject(vs map[string]any, escapeEncodedString bool) {
 	e.w.WriteByte('{')
 	type keyVal struct {
 		key string
@@ -198,9 +198,9 @@ func (e *encoder) encodeObject(vs map[string]any) {
 		if i > 0 {
 			e.w.WriteByte(',')
 		}
-		e.encodeString(kv.key)
+		e.encodeString(kv.key, escapeEncodedString)
 		e.w.WriteByte(':')
-		e.encode(kv.val)
+		e.encode(kv.val, escapeEncodedString)
 	}
 	e.w.WriteByte('}')
 }
