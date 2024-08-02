@@ -157,8 +157,8 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	bigSizedReplyMap := map[string]int{
 		"configmaps.v1": 1,
 		"packagemanifests.packages.operators.coreos.com/v1": 1,
-		"apirequestcounts.apiserver.openshift.io/v1":        5,
-		"customresourcedefinitions.apiextensions.k8s.io/v1": 5,
+		"apirequestcounts.apiserver.openshift.io/v1":        1,
+		"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
 	}
 	// retrieve gvk list and write
 	logger.Debug("retrieve gvk list and write")
