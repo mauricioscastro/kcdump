@@ -710,32 +710,36 @@ func writeResourceListLog(msg string, err error) error {
 }
 
 func formatResourceContent(contents string, format int, chunked bool, escapeEncodedJson bool) (string, error) {
-	yq := yjq.YqEval
-	if format != YAML {
-		yq = yjq.YqEvalJ2JC
-	}
 	switch format {
 	case YAML:
 		if !chunked {
 			return contents, nil
 		}
-		return yq("[.items[]]", contents)
+		return yjq.YqEval("[.items[]]", contents)
 	case JSON:
 		if !chunked {
 			return contents, nil
 		}
-		return getJsonItems(".items[]", contents, yq, ",", escapeEncodedJson)
+		yq := yjq.YqEvalJ2JC
+		if escapeEncodedJson {
+			yq = yjq.JqEvalEscaped
+		}
+		items, err := yq("[.items[]]", contents)
+		if err != nil {
+			return "", fmt.Errorf("json JqEvalEscaped items: %w", err)
+		}
+		return items[1 : len(items)-1], nil
 	case JSON_LINES:
-		return getJsonItems(".items[]", contents, yq, "\n", escapeEncodedJson)
+		return getJsonLines(contents, false, escapeEncodedJson)
 	case JSON_LINES_WRAPPED:
-		return getJsonItems(`{"_": .items[]}`, contents, yq, "\n", escapeEncodedJson)
+		return getJsonLines(contents, true, escapeEncodedJson)
 	case JSON_PRETTY:
 		if !chunked {
 			return yjq.J2JP(contents)
 		}
-		items, err := yjq.Eval2List(yq, ".items[]", contents)
+		items, err := yjq.Eval2List(yjq.YqEvalJ2JC, ".items[]", contents)
 		if err != nil {
-			return "", fmt.Errorf("json split items: %w", err)
+			return "", fmt.Errorf("json pretty split items: %w", err)
 		}
 		var nc strings.Builder
 		for i, item := range items {
@@ -744,7 +748,7 @@ func formatResourceContent(contents string, format int, chunked bool, escapeEnco
 				return "", err
 			}
 			if escapeEncodedJson {
-				if item, err = yjq.EscapeJsonEncodedStrings(item); err != nil {
+				if item, err = yjq.JqEvalEscaped(".", item); err != nil {
 					return "", fmt.Errorf("EscapeJsonEncodedStrings: %w", err)
 				}
 			}
@@ -766,24 +770,28 @@ func formatResourceContent(contents string, format int, chunked bool, escapeEnco
 	}
 }
 
-func getJsonItems(expr string, newcontent string, yq yjq.EvalFunc, separator string, escapeEncodedJson bool) (string, error) {
-	items, err := yjq.Eval2List(yq, expr, newcontent)
+func getJsonLines(content string, wrapped bool, escapeEncodedJson bool) (string, error) {
+	lines := ""
+	yq := yjq.JqEval
+	expr := ".items[]"
+	if wrapped {
+		expr = `{"_": .items[]}`
+	}
+	if escapeEncodedJson {
+		yq = yjq.JqEvalEscaped
+		expr = `map(.items,"\\x01")`
+		if wrapped {
+			expr = `map({"_": .items},"\\x01")`
+		}
+	}
+	lines, err := yq(expr, content)
 	if err != nil {
-		return "", fmt.Errorf("json split items: %w", err)
+		return "", fmt.Errorf("getJsonLines wrapped: %w", err)
 	}
-	var nc strings.Builder
-	for i, item := range items {
-		if escapeEncodedJson {
-			if item, err = yjq.EscapeJsonEncodedStrings(item); err != nil {
-				return "", fmt.Errorf("EscapeJsonEncodedStrings: %w", err)
-			}
-		}
-		if i < len(items)-1 {
-			item = item + separator
-		}
-		nc.WriteString(item)
+	if escapeEncodedJson {
+		lines = strings.ReplaceAll(lines[1:len(lines)-9], `,"\\x01",`, "\n")
 	}
-	return nc.String(), nil
+	return lines, nil
 }
 
 func writeWholeResourceFile(path string, contents string, gz bool, format int, escapeEncodedJson bool) error {
