@@ -58,7 +58,8 @@ type (
 		Version() string
 		Response() string
 		Err() error
-		Status() int
+		StatusCode() int
+		Status() string
 		Cluster() string
 		Api() string
 		Ns() (string, error)
@@ -78,7 +79,8 @@ type (
 		api         string
 		resp        string
 		err         error
-		status      int
+		statusCode  int
+		status      string
 		accept      string
 		transformer ResponseTransformer
 	}
@@ -289,7 +291,11 @@ func (kc *kc) Err() error {
 	return kc.err
 }
 
-func (kc *kc) Status() int {
+func (kc *kc) StatusCode() int {
+	return kc.statusCode
+}
+
+func (kc *kc) Status() string {
 	return kc.status
 }
 
@@ -304,10 +310,10 @@ func (kc *kc) Get(apiCall string) (string, error) {
 		return "", err
 	}
 	logResponse(apiCall, resp)
-	// kc.resp, kc.err = kc.response(resp, yamlOutput)
-	kc.status = resp.StatusCode()
+	kc.statusCode = resp.StatusCode()
+	kc.status = resp.Status()
 	kc.resp = string(resp.Body())
-	if kc.status >= 400 {
+	if kc.statusCode >= 400 {
 		kc.err = errors.New(resp.Status() + "\n" + kc.resp)
 	}
 	if kc.transformer != nil {
@@ -349,6 +355,8 @@ func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
 		kc.err = errors.New(resp.Status() + "\n" + kc.resp)
 		return "", kc.err
 	}
+	kc.status = resp.Status()
+	kc.statusCode = resp.StatusCode()
 	return kc.resp, nil
 }
 
@@ -430,6 +438,8 @@ func (kc *kc) send(method string, apiCall string, yamlBody string) (string, erro
 	if kc.err == nil {
 		logResponse(apiCall, res)
 		kc.resp = string(res.Body())
+		kc.status = res.Status()
+		kc.statusCode = res.StatusCode()
 	}
 	return kc.resp, kc.err
 }

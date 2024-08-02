@@ -134,10 +134,6 @@ func JqEvalEscaped(expr string, input string, param ...any) (string, error) {
 	return jq(expr, input, false, true, param...)
 }
 
-// func EscapeJsonEncodedStrings(input string) (string, error) {
-// 	return jq(".", input, false, true)
-// }
-
 func jq(expr string, json string, yamlOutput bool, escapeEncodedString bool, param ...any) (string, error) {
 	query, err := gojq.Parse(fmt.Sprintf(expr, param...))
 	if err != nil {

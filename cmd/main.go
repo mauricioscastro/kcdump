@@ -30,6 +30,8 @@ import (
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 )
 
+// '.syncChunkMap | to_entries[] | .key + "," + .value'
+
 type nsExcludeList []string
 type gvkExcludeList []string
 

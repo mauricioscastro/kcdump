@@ -441,10 +441,13 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 			return writeResourceListLog("get api chunk "+logLine, err)
 		}
 		if len(apiResources) == 0 {
-			if len(ctk) == 0 {
-				break
-			}
-			continue
+			logger.Info("apiResources empty "+logLine, zap.String("status", kc.Status()))
+			break
+			// TODO: check infinite loop condition
+			// if len(ctk) == 0 {
+			// 	break
+			// }
+			// continue
 		}
 		ctk, err = yq(`.metadata.continue // ""`, apiResources)
 		if err != nil {
@@ -703,9 +706,9 @@ func writeLogs(kc Kc, path string, apis string, baseName string, yq yjq.EvalFunc
 }
 
 func apiIgnoreNotFoundResponseTransformer(kc Kc) (string, error) {
-	if kc.Status() == http.StatusNotFound ||
-		kc.Status() == http.StatusMethodNotAllowed ||
-		kc.Status() == http.StatusGone {
+	if kc.StatusCode() == http.StatusNotFound ||
+		kc.StatusCode() == http.StatusMethodNotAllowed ||
+		kc.StatusCode() == http.StatusGone {
 		return "", nil
 	}
 	return kc.Response(), kc.Err()
