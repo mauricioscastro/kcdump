@@ -154,11 +154,15 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	}
 	// big things to retrieve serially
 	// name.gv -> chunk size to use
-	bigSizedReplyMap := map[string]int{
+	syncChunkMap := map[string]int{
 		"configmaps.v1": 1,
 		"packagemanifests.packages.operators.coreos.com/v1": 1,
 		"apirequestcounts.apiserver.openshift.io/v1":        1,
 		"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
+	}
+	asyncChunkMap := map[string]int{
+		"events.v1":               100,
+		"events.events.k8s.io/v1": 100,
 	}
 	// retrieve gvk list and write
 	logger.Debug("retrieve gvk list and write")
@@ -182,7 +186,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	// retrieve big guys first serially
 	for i, le := range apiList {
 		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
-		if bigSizedReplyChunkSize, isBig := bigSizedReplyMap[name+"."+gv]; isBig {
+		if bigSizedReplyChunkSize, isBig := syncChunkMap[name+"."+gv]; isBig {
 			chunkSize = bigSizedReplyChunkSize
 			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
 			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, progress)
@@ -196,6 +200,10 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
 		if name == "namespaces" && gv == kc.Version() {
 			continue
+		}
+		if differentChunkSize, isPresent := asyncChunkMap[name+"."+gv]; isPresent {
+			chunkSize = differentChunkSize
+			logger.Info(fmt.Sprintf("%s.%s will use chunks of size %d", name, gv, chunkSize))
 		}
 		logger.Debug("KcDump", zap.String("baseName", baseName), zap.String("name", name), zap.Bool("namespaced", namespaced), zap.String("gv", gv))
 		wg.BlockAdd()
