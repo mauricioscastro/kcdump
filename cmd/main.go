@@ -37,23 +37,25 @@ var (
 	logger = log.Logger().Named("kcdump.main")
 
 	// cli dump options
-	home       string
-	gzip       bool
-	tgz        bool
-	prune      bool
-	getlogs    bool
-	ns         bool
-	splitns    bool
-	splitgv    bool
-	gvk        bool
-	xns        nsExcludeList
-	xgvk       gvkExcludeList
-	targetDir  string
-	format     string
-	escapeJson bool
-	kubeconfig string
-	context    string
-	logLevel   string
+	home             string
+	gzip             bool
+	tgz              bool
+	prune            bool
+	getlogs          bool
+	ns               bool
+	splitns          bool
+	splitgv          bool
+	gvk              bool
+	xns              nsExcludeList
+	xgvk             gvkExcludeList
+	targetDir        string
+	format           string
+	escapeJson       bool
+	kubeconfig       string
+	context          string
+	logLevel         string
+	asyncWorkers     int
+	defaultChunkSize int
 )
 
 func init() {
@@ -86,7 +88,8 @@ func main() {
 	flag.StringVar(&kubeconfig, "kubeconfig", filepath.FromSlash(home+"/.kube/config"), "kubeconfig file or read from stdin.")
 	flag.StringVar(&context, "context", kc.CurrentContext, "kube config context to use")
 	flag.StringVar(&logLevel, "logLevel", "error", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
-
+	flag.IntVar(&asyncWorkers, "asyncWorkers", 10, "number of group version kind to process in parallel")
+	flag.IntVar(&defaultChunkSize, "defaultChunkSize", 25, "number of list items to retrieve until finished for all async workers")
 	flag.Parse()
 
 	os.Exit(dump())
@@ -141,7 +144,7 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	if e := kc.Dump(targetDir, xns, xgvk, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, 10, 25, escapeJson, nil); e != nil {
+	if e := kc.Dump(targetDir, xns, xgvk, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}
