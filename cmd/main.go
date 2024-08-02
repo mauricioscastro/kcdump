@@ -135,7 +135,7 @@ func dump() int {
 		if e != nil {
 			return 5
 		}
-		g, e = yjq.YqEval(`with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | [.name + "," + .groupVersion + "," + .kind] | sort | .[]`, g)
+		g, e = yjq.YqEval(`with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | [.name + "," + .groupVersion + "," + .kind] | .[]`, g)
 		if e != nil {
 			return 6
 		}
