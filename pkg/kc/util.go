@@ -157,9 +157,6 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	bigSizedReplyMap := map[string]int{
 		"configmaps.v1": 1,
 		"packagemanifests.packages.operators.coreos.com/v1": 1,
-		// "clusterversions.config.openshift.io/v1":            1,
-		// "authentications.config.openshift.io/v1":            1,
-		// "consolequickstarts.console.openshift.io/v1":        1,
 		"apirequestcounts.apiserver.openshift.io/v1":        5,
 		"customresourcedefinitions.apiextensions.k8s.io/v1": 5,
 	}
