@@ -387,7 +387,7 @@ func getVersion(kc *kc, path string, format int, gz bool) error {
 	if format == JSON_LINES || format == JSON_LINES_WRAPPED {
 		format = JSON
 	}
-	if err = writeWholeResourceFile(path+"version.yaml", version, gz, format, false); err != nil {
+	if err = writeWholeResourceFile(path+"Version.yaml", version, gz, format, false); err != nil {
 		return err
 	}
 	return nil
@@ -430,11 +430,11 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 	logger.Info("starting " + logLine)
 	defer logger.Info("finishing " + logLine)
 	// start getting chunked list
-	for ctk := ""; ; {
+	for continueToken := ""; ; {
 		apiResources, err := kc.
 			SetResponseTransformer(apiIgnoreNotFoundResponseTransformer).
 			SetGetParam("limit", fmt.Sprintf("%d", chunkSize)).
-			SetGetParam("continue", ctk).
+			SetGetParam("continue", continueToken).
 			Accept(reqFormat).
 			Get(baseName + gv + "/" + name)
 		if err != nil {
@@ -443,20 +443,15 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 		if len(apiResources) == 0 {
 			logger.Info("apiResources empty "+logLine, zap.String("status", kc.Status()))
 			break
-			// TODO: check infinite loop condition
-			// if len(ctk) == 0 {
-			// 	break
-			// }
-			// continue
 		}
-		ctk, err = yq(`.metadata.continue // ""`, apiResources)
+		continueToken, err = yq(`.metadata.continue // ""`, apiResources)
 		if err != nil {
 			return writeResourceListLog("find continue get api chunk "+logLine, err)
 		}
-		ric, err := yjq.Eval2Int(yq, `.metadata.remainingItemCount // "0"`, apiResources)
+		remainingItemCount, err := yjq.Eval2Int(yq, `.metadata.remainingItemCount // "0"`, apiResources)
 		if err != nil {
 			logger.Debug("Eval2Int get api chunk "+logLine, zap.Error(err))
-			ric = 0
+			remainingItemCount = 0
 		}
 		if apiResources, err = cleanApiResourcesChunk(apiResources, name, gv, nsExclusionList, format); err != nil {
 			return writeResourceListLog("cleanApiResourcesChunk "+logLine, err)
@@ -505,7 +500,7 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 				}
 			}
 		}
-		if ric == 0 {
+		if remainingItemCount == 0 {
 			break
 		}
 	}
@@ -790,17 +785,17 @@ func getJsonLines(content string, wrapped bool, escapeEncodedJson bool) (string,
 	}
 	if escapeEncodedJson {
 		yq = yjq.JqEvalEscaped
-		expr = `map(.items,"\\x01")`
+		expr = `.items | map(., "\\x01")`
 		if wrapped {
-			expr = `map({"_": .items},"\\x01")`
+			expr = `.items | map({"_": .},"\\x01")`
 		}
 	}
 	lines, err := yq(expr, content)
 	if err != nil {
-		return "", fmt.Errorf("getJsonLines wrapped: %w", err)
+		return "", fmt.Errorf("getJsonLines: %w\n%s\n%s", err, content, expr)
 	}
 	if escapeEncodedJson {
-		lines = strings.ReplaceAll(lines[1:len(lines)-9], `,"\\x01",`, "\n")
+		lines = strings.ReplaceAll(lines[1:len(lines)-11], `,"\\\\x01",`, "\n")
 	}
 	return lines, nil
 }
