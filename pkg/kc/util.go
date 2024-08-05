@@ -944,7 +944,7 @@ func FilterApiResources(apis string, gvkExclusionList []string, format int) (str
 		yq = yjq.YqEvalJ2JC
 	}
 	for _, re := range gvkExclusionList {
-		r := strings.Split(re, ",")
+		r := strings.Split(re, ":")
 		if len(r) == 1 {
 			r = append(r, ".*")
 		}

@@ -32,6 +32,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/rwtodd/Go.Sed v0.0.0-20240405174034-bb8ed5da0fd0
+	github.com/spf13/pflag v1.0.5
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.27.0 // indirect

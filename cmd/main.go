@@ -17,7 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"flag"
+	// "flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,12 +28,8 @@ import (
 	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
+	flag "github.com/spf13/pflag"
 )
-
-// '.syncChunkMap | to_entries[] | .key + "," + .value'
-
-type nsExcludeList []string
-type gvkExcludeList []string
 
 var (
 	logger = log.Logger().Named("kcdump.main")
@@ -48,8 +44,10 @@ var (
 	splitns          bool
 	splitgv          bool
 	gvk              bool
-	xns              nsExcludeList
-	xgvk             gvkExcludeList
+	xns              []string
+	xgvk             []string
+	syncChunkMap     map[string]int
+	asyncChunkMap    map[string]int
 	targetDir        string
 	format           string
 	escapeJson       bool
@@ -71,6 +69,16 @@ func init() {
 	if home == "/" {
 		home = ""
 	}
+	syncChunkMap = map[string]int{
+		"configmaps.v1": 1,
+		"packagemanifests.packages.operators.coreos.com/v1": 1,
+		"apirequestcounts.apiserver.openshift.io/v1":        1,
+		"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
+	}
+	asyncChunkMap = map[string]int{
+		"events.v1":               100,
+		"events.events.k8s.io/v1": 100,
+	}
 }
 
 func main() {
@@ -82,8 +90,8 @@ func main() {
 	flag.BoolVar(&gvk, "gvk", false, "print (filtered or not) group version kind with format 'gv,k' and exit (default false)")
 	flag.BoolVar(&splitns, "splitns", false, "split namespaced items into directories with their namespace name (default false)")
 	flag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside (default false)")
-	flag.Var(&xns, "xns", "regex to match and exclude unwanted namespaces. can be used multiple times.")
-	flag.Var(&xgvk, "xgvk", "regex to match and exclude unwanted groupVersion and kind. format is 'gv,k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk metrics.*,Pod.*. can be used multiple times.")
+	flag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.*,kube.*"`)
+	flag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	flag.StringVar(&targetDir, "targetDir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
 	flag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
 	flag.BoolVar(&escapeJson, "escapeJson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column.")
@@ -92,6 +100,8 @@ func main() {
 	flag.StringVar(&logLevel, "logLevel", "error", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
 	flag.IntVar(&asyncWorkers, "asyncWorkers", 10, "number of group version kind to process in parallel")
 	flag.IntVar(&defaultChunkSize, "defaultChunkSize", 25, "number of list items to retrieve until finished for all async workers")
+	flag.StringToIntVar(&syncChunkMap, "syncChunkMap", syncChunkMap, "")
+	flag.StringToIntVar(&asyncChunkMap, "asyncChunkMap", asyncChunkMap, "")
 	flag.Parse()
 
 	os.Exit(dump())
@@ -146,27 +156,27 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	if e := kc.Dump(targetDir, xns, xgvk, make(map[string]int), make(map[string]int), !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, nil); e != nil {
+	if e := kc.Dump(targetDir, xns, xgvk, syncChunkMap, asyncChunkMap, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}
 	return 0
 }
 
-func (i *nsExcludeList) String() string {
-	return fmt.Sprint(*i)
-}
+// func (i *nsExcludeList) String() string {
+// 	return fmt.Sprint(*i)
+// }
 
-func (i *nsExcludeList) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
+// func (i *nsExcludeList) Set(value string) error {
+// 	*i = append(*i, value)
+// 	return nil
+// }
 
-func (i *gvkExcludeList) String() string {
-	return fmt.Sprint(*i)
-}
+// func (i *gvkExcludeList) String() string {
+// 	return fmt.Sprint(*i)
+// }
 
-func (i *gvkExcludeList) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
+// func (i *gvkExcludeList) Set(value string) error {
+// 	*i = append(*i, value)
+// 	return nil
+// }
