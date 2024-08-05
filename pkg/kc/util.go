@@ -636,7 +636,7 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 		return "", err
 	}
 	if name == "secrets" {
-		cleanApiResource, err = yjq.YqEval(`.items = [.items[] | select(has("data")|not) | del(.metadata.annotations."openshift.io/token-secret.value") , .items[] | select(has("data")) | .data[] = "" | del(.metadata.annotations."openshift.io/token-secret.value")]`, cleanApiResource)
+		cleanApiResource, err = yjq.YqEval(`with(.items[]; del(.metadata.annotations."openshift.io/token-secret.value") | select(has("data")) | .data[] = "" | select(has("stringData")) | .stringData.[] = "")`, cleanApiResource)
 		if err != nil {
 			return "", err
 		}
