@@ -119,7 +119,7 @@ func apiResourcesResponseTransformer(kc Kc) (string, error) {
 // the threads can be expressed through poolsize (0 or -1 to unbound it).
 // progress will be called at the end. You need to add thread safety mechanisms
 // to the code inside progress func().
-func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []string, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error {
+func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error {
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
 		return fmt.Errorf("unknown format")
 	}
@@ -154,15 +154,19 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	}
 	// big things to retrieve serially
 	// name.gv -> chunk size to use
-	syncChunkMap := map[string]int{
-		"configmaps.v1": 1,
-		"packagemanifests.packages.operators.coreos.com/v1": 1,
-		"apirequestcounts.apiserver.openshift.io/v1":        1,
-		"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
+	if len(syncChunkMap) == 0 {
+		syncChunkMap = map[string]int{
+			"configmaps.v1": 1,
+			"packagemanifests.packages.operators.coreos.com/v1": 1,
+			"apirequestcounts.apiserver.openshift.io/v1":        1,
+			"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
+		}
 	}
-	asyncChunkMap := map[string]int{
-		"events.v1":               100,
-		"events.events.k8s.io/v1": 100,
+	if len(asyncChunkMap) == 0 {
+		asyncChunkMap = map[string]int{
+			"events.v1":               100,
+			"events.events.k8s.io/v1": 100,
+		}
 	}
 	// retrieve gvk list and write
 	logger.Debug("retrieve gvk list and write")
