@@ -81,6 +81,8 @@ func init() {
 	}
 }
 
+// readme table: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's,^--([^ ]+)( .*)$,| \1 |\2 |,g'
+
 func main() {
 	flag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (default false)")
 	flag.BoolVar(&gzip, "gzip", true, "gzip output")
@@ -94,14 +96,14 @@ func main() {
 	flag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	flag.StringVar(&targetDir, "targetDir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
 	flag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
-	flag.BoolVar(&escapeJson, "escapeJson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column.")
+	flag.BoolVar(&escapeJson, "escapeJson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \\t \\n ...")
 	flag.StringVar(&kubeconfig, "kubeconfig", filepath.FromSlash(home+"/.kube/config"), "kubeconfig file or read from stdin.")
 	flag.StringVar(&context, "context", kc.CurrentContext, "kube config context to use")
 	flag.StringVar(&logLevel, "logLevel", "error", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
 	flag.IntVar(&asyncWorkers, "asyncWorkers", 10, "number of group version kind to process in parallel")
 	flag.IntVar(&defaultChunkSize, "defaultChunkSize", 25, "number of list items to retrieve until finished for all async workers")
-	flag.StringToIntVar(&syncChunkMap, "syncChunkMap", syncChunkMap, "")
-	flag.StringToIntVar(&asyncChunkMap, "asyncChunkMap", asyncChunkMap, "")
+	flag.StringToIntVar(&syncChunkMap, "syncChunkMap", syncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --defaultChunkSize")
+	flag.StringToIntVar(&asyncChunkMap, "asyncChunkMap", asyncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --defaultChunkSize and --asyncWorkers")
 	flag.Parse()
 
 	os.Exit(dump())
@@ -162,21 +164,3 @@ func dump() int {
 	}
 	return 0
 }
-
-// func (i *nsExcludeList) String() string {
-// 	return fmt.Sprint(*i)
-// }
-
-// func (i *nsExcludeList) Set(value string) error {
-// 	*i = append(*i, value)
-// 	return nil
-// }
-
-// func (i *gvkExcludeList) String() string {
-// 	return fmt.Sprint(*i)
-// }
-
-// func (i *gvkExcludeList) Set(value string) error {
-// 	*i = append(*i, value)
-// 	return nil
-// }
