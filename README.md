@@ -27,7 +27,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 | splitgv | split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside (default false) |
 | splitns | split namespaced items into directories with their namespace name (default false) |
 | syncChunkMap | a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --defaultChunkSize (default [customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1]) |
-| targetDir | target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "/home/macastro/.kube/kcdump") |
+| targetDir | target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "USER_HOME/.kube/kcdump") |
 | tgz | a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false) |
 | xgvk | regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*" |
 | xns | regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.*,kube.*" |
