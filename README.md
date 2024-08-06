@@ -20,7 +20,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 | getlogs | get pod's logs? (default false) |
 | gvk | print (filtered or not) group version kind with format 'gv,k' and exit (default false) |
 | gzip | gzip output (default true) |
-| kubeconfig | kubeconfig file or read from stdin. (default "/home/macastro/.kube/config") |
+| kubeconfig | kubeconfig file or read from stdin. (default "USER_HOME/.kube/config") |
 | logLevel | use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "error") |
 | ns | print (filtered or not) namespaces list and exit (default false) |
 | prune | prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false) |
