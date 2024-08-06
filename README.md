@@ -34,7 +34,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:
 ```bash
-> kcdump --splitgv=false --format=json_lines --getlogs=false --gzip=false --escapeJson=true
+> kcdump --splitgv=false --format=json_lines --getlogs=false --gzip=true --escapeJson=true
 ```
 Those are the default options, similar to just calling `> kcdump` . With this, a big gziped json file is created. This big json is later loaded by the [dumpdb](./dumpdb/) container for manipulation with Postgres SQL queries.
 
