@@ -18,7 +18,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 | escapeJson | escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \t \n ... (default true) |
 | format | output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "json_lines") |
 | getlogs | get pod's logs? (default false) |
-| gvk | print (filtered or not) group version kind with format 'gv,k' and exit (default false) |
+| gvk | print (filtered or not) group version kind with format 'name,gv,k' and exit (default false) |
 | gzip | gzip output (default true) |
 | kubeconfig | kubeconfig file or read from stdin. (default "USER_HOME/.kube/config") |
 | logLevel | use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "error") |
