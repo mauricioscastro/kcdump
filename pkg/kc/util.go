@@ -24,11 +24,11 @@ import (
 )
 
 const (
-	YAML               int = 0
-	JSON               int = 1
-	JSON_LINES         int = 2
-	JSON_LINES_WRAPPED int = 3
-	JSON_PRETTY        int = 4
+	YAML = 1 << iota
+	JSON
+	JSON_LINES
+	JSON_LINES_WRAPPED
+	JSON_PRETTY
 )
 
 var (
@@ -154,20 +154,20 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	}
 	// big things to retrieve serially
 	// name.gv -> chunk size to use
-	if len(syncChunkMap) == 0 {
-		syncChunkMap = map[string]int{
-			"configmaps.v1": 1,
-			"packagemanifests.packages.operators.coreos.com/v1": 1,
-			"apirequestcounts.apiserver.openshift.io/v1":        1,
-			"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
-		}
-	}
-	if len(asyncChunkMap) == 0 {
-		asyncChunkMap = map[string]int{
-			"events.v1":               100,
-			"events.events.k8s.io/v1": 100,
-		}
-	}
+	// if len(syncChunkMap) == 0 {
+	// 	syncChunkMap = map[string]int{
+	// 		"configmaps.v1": 1,
+	// 		"packagemanifests.packages.operators.coreos.com/v1": 1,
+	// 		"apirequestcounts.apiserver.openshift.io/v1":        1,
+	// 		"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
+	// 	}
+	// }
+	// if len(asyncChunkMap) == 0 {
+	// 	asyncChunkMap = map[string]int{
+	// 		"events.v1":               100,
+	// 		"events.events.k8s.io/v1": 100,
+	// 	}
+	// }
 	// retrieve gvk list and write
 	logger.Debug("retrieve gvk list and write")
 	apis, err := getGroupVersionKind(kc, path, gvkExclusionList, gz, format, escapeEncodedJson)
