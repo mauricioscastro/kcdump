@@ -82,7 +82,7 @@ func init() {
 	}
 }
 
-// readme table: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -r 's,^--([^ ]+)( .*)$,| \1 |\2 |,g'
+// readme table: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/| `\1` \2 |/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
 
 func main() {
 	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (default false)")
@@ -108,9 +108,6 @@ func main() {
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.Parse()
 
-	// viper.AutomaticEnv()
-	// viper.SetEnvPrefix("KCD")
-	// viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.BindPFlags(pflag.CommandLine)
 	viper.SetConfigFile(config)
 
@@ -123,21 +120,9 @@ func main() {
 	} else {
 		if err := optionsFromViper(); err != nil {
 			logger.Error("reading option", zap.Error(err))
-			os.Exit(-1)
+			os.Exit(10)
 		}
 	}
-
-	// m, err := getStringMapInt(viper.Get("async-chunk-map"))
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-
-	// fmt.Println(viper.Get("async-chunk-map"))
-	// fmt.Println(viper.Get("xns"))
-	// fmt.Println(viper.Get("gzip"))
-	// fmt.Println(m)
-	// fmt.Println(viper.AllKeys())
-	// os.Exit(0)
 
 	os.Exit(dump())
 }
