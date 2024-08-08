@@ -225,14 +225,21 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if getVersion(kc, path, format, gz); err != nil {
 		return err
 	}
+	size := ""
 	if tgz {
-		if err = tgzAndPrune(path, prune); err != nil {
+		if size, err = tgzAndPrune(path, prune); err != nil {
 			return err
 		}
 	}
 	// create big fat file
 	if !splitgv {
-		if err = joinAll(path, dumpDir, format, gzBigFile, nologs); err != nil {
+		if size, err = joinAll(path, dumpDir, format, gzBigFile, nologs); err != nil {
+			return err
+		}
+	}
+	if !tgz && splitgv {
+		size, err = fsutil.Size(path)
+		if err != nil {
 			return err
 		}
 	}
@@ -247,11 +254,11 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 			return errors.New(collectedErrors.String())
 		}
 	}
-	logger.Info("finished dumping cluster " + kc.cluster)
+	logger.Info("finished dumping cluster " + kc.cluster + " using " + size)
 	return nil
 }
 
-func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) error {
+func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) (string, error) {
 	bigFileName := dumpDir
 	if format == YAML {
 		bigFileName = bigFileName + ".yaml"
@@ -266,20 +273,20 @@ func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) erro
 	}
 	bigFile, err := os.OpenFile(bigFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return "", err
 	}
 	l, err := fsutil.ListFiles(path, false)
 	if err != nil {
-		return err
+		return "", err
 	}
 	for fi, f := range l {
 		if fi > 0 {
 			if _, err := bigFile.WriteString(separator); err != nil {
-				return err
+				return "", err
 			}
 		}
 		if err := copyFile(f, bigFile); err != nil {
-			return err
+			return "", err
 		}
 		os.Remove(f)
 	}
@@ -289,18 +296,23 @@ func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) erro
 			logger.Error("gzip error", zap.Error(err))
 		}
 		logger.Info("gzipped " + bigFilePath)
+		bigFilePath = bigFilePath + ".gz"
 	}
 	if nologs {
 		os.Remove(path)
 	}
-	return nil
+	sz, err := fsutil.Size(bigFilePath)
+	if err != nil {
+		return "", err
+	}
+	return sz, nil
 }
 
-func tgzAndPrune(path string, prune bool) error {
+func tgzAndPrune(path string, prune bool) (string, error) {
 	tgzpath := path[:len(path)-1] + ".tar"
 	if err := archive(path, tgzpath); err != nil {
 		logger.Error("tape archiving error", zap.Error(err))
-		return err
+		return "", err
 	}
 	if err := gzip(tgzpath); err != nil {
 		logger.Error("gzip error", zap.Error(err))
@@ -308,7 +320,11 @@ func tgzAndPrune(path string, prune bool) error {
 	if prune {
 		os.RemoveAll(path)
 	}
-	return nil
+	sz, err := fsutil.Size(tgzpath + ".gz")
+	if err != nil {
+		return "", err
+	}
+	return sz, nil
 }
 
 func getNs(kc *kc, path string, nsExclusionList []string, gz bool, format int, yq yjq.EvalFunc, splitns bool, nologs bool, escapeEncodedJson bool) error {

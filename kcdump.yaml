@@ -1,4 +1,4 @@
-gzip: false
+#gzip: false
 loglevel: info
-async-chunk-map: {}
-sync-chunk-map: {}
+#async-chunk-map: {}
+#sync-chunk-map: {}
