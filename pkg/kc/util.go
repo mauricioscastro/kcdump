@@ -33,6 +33,7 @@ const (
 
 var (
 	DefaultCleaningQuery  = `.items = [.items[] | del(.metadata.managedFields) | del(.metadata.uid) | del (.metadata.creationTimestamp) | del (.metadata.generation) | del(.metadata.resourceVersion) | del (.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])] | del(.metadata)`
+	SecretsCleaningQuery  = `with(.items[]; del(.metadata.annotations."openshift.io/token-secret.value") | select(has("data")) | .data[] = "" | select(has("stringData")) | .stringData.[] = "")`
 	apiAvailableListQuery = `with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | .name + ";" + .groupVersion + ";" + .namespaced`
 	dumpWorkerErrors      atomic.Value
 )
@@ -652,24 +653,11 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 		return "", err
 	}
 	if name == "secrets" {
-		cleanApiResource, err = yjq.YqEval(`with(.items[]; del(.metadata.annotations."openshift.io/token-secret.value") | select(has("data")) | .data[] = "" | select(has("stringData")) | .stringData.[] = "")`, cleanApiResource)
+		cleanApiResource, err = yjq.YqEval(SecretsCleaningQuery, cleanApiResource)
 		if err != nil {
 			return "", err
 		}
 	}
-	// if name == "packagemanifests" && gv == "packages.operators.coreos.com/v1" {
-	// 	cleanApiResource, err = yjq.YqEval(`with(.items[].status.channels[].currentCSVDesc; del(.description) | del (.annotations.alm-examples) | del(.annotations."operatorframework.io/initialization-resource") | del(.annotations."operatorframework.io/suggested-namespace-template"))`, cleanApiResource)
-	// 	if err != nil {
-	// 		return "", err
-	// 	}
-	// 	// logger.Info("packagemanifests cleaned")
-	// }
-	// if name == "configmaps" {
-	// 	cleanApiResource, err = yjq.YqEval(`del(.items[].metadata.annotations."kubernetes.io/description")`, cleanApiResource)
-	// 	if err != nil {
-	// 		return "", err
-	// 	}
-	// }
 	return cleanApiResource, nil
 }
 
