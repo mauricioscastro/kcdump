@@ -744,6 +744,9 @@ func formatResourceContent(contents string, format int, chunked bool, escapeEnco
 		return yjq.YqEval("[.items[]]", contents)
 	case JSON:
 		if !chunked {
+			if escapeEncodedJson {
+				return yjq.JqEvalEscaped(".", contents)
+			}
 			return contents, nil
 		}
 		yq := yjq.YqEvalJ2JC
@@ -761,7 +764,14 @@ func formatResourceContent(contents string, format int, chunked bool, escapeEnco
 		return getJsonLines(contents, true, escapeEncodedJson)
 	case JSON_PRETTY:
 		if !chunked {
-			return yjq.J2JP(contents)
+			contents, err := yjq.J2JP(contents)
+			if err != nil {
+				return "", err
+			}
+			if escapeEncodedJson {
+				return yjq.JqEvalEscaped(".", contents)
+			}
+			return contents, err
 		}
 		items, err := yjq.Eval2List(yjq.YqEvalJ2JC, ".items[]", contents)
 		if err != nil {
