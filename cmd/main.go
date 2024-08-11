@@ -24,6 +24,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/mauricioscastro/kcdump/pkg/kc"
 	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
@@ -83,8 +84,26 @@ func init() {
 }
 
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
-
 func main() {
+	// body, _ := io.ReadAll(os.Stdin)
+
+	log.SetLoggerLevel("error")
+	_kc := kc.NewKc()
+	// apis, _ := _kc.ApiResources()
+	// apis, _ := _kc.Accept(kc.Yaml).Get("/apis/storage.k8s.io/v1")
+	apis, err := _kc.GetNameFromGvk("storage.k8s.io/v1", "StorageClass")
+	// apis, err := _kc.Accept(kc.Yaml).Apply("/api/v1/namespaces/echo/services/echo", string(body))
+	fmt.Println(apis)
+	fmt.Println(_kc.Version())
+	fmt.Println(_kc.Version())
+	fmt.Println(err)
+
+	apis, err = _kc.GetNameFromGvk("v1", "Service")
+	fmt.Println(apis)
+	// apis, _ = _kc.Accept(kc.Yaml).Get("/api/" + _kc.Version())
+	// fmt.Println(apis)
+	os.Exit(0)
+
 	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (default false)")
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")

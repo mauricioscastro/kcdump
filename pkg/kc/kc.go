@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,10 +22,10 @@ import (
 )
 
 // cmd exec in pod:
-// 'https://cluster:443/api/v1/namespaces/exec/pods/shell-demo/exec?command=ls&container=loop&stderr=true&stdout=true'
+// -XPOST  -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: oc/4.11.0 (linux/amd64) kubernetes/262ac9c" 'https://192.168.49.2:8443/api/v1/namespaces/default/pods/dumpdb-866cfc54f4-s9szl/exec?command=date&container=dumpdb&stderr=true&stdout=true'
 //
 // cp to pod:
-// -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" 'https://192.168.49.2:8443/api/v1/namespaces/hcr/pods/dumpdb-59f55f8cc7-lqp7n/exec?command=tar&command=-xmf&command=-&command=-C&command=%2Ftmp&container=dumpdb&stderr=true&stdin=true&stdout=true'
+// -XPOST  -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: oc/4.11.0 (linux/amd64) kubernetes/262ac9c" 'https://192.168.49.2:8443/api/v1/namespaces/default/pods/dumpdb-866cfc54f4-s9szl/exec?command=tar&command=-xmf&command=-&command=-C&command=%2Ftmp&container=dumpdb&stderr=true&stdin=true&stdout=true'
 
 const (
 	Json                    = "json"
@@ -70,6 +71,7 @@ type (
 		send(method string, apiCall string, body string) (string, error)
 		// get(apiCall string, yamlOutput bool) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
+		GetNameFromGvk(gv string, k string) (string, error)
 	}
 
 	kc struct {
@@ -88,7 +90,8 @@ type (
 	// should return ('transformed response', 'transformed error')
 	ResponseTransformer func(Kc) (string, error)
 	cacheEntry          struct {
-		version string
+		version    string
+		gvkMapName map[string]string // "gv.k" is key
 	}
 )
 
@@ -251,7 +254,7 @@ func newKc() Kc {
 func (kc *kc) SetCluster(cluster string) Kc {
 	kc.cluster = cluster
 	kc.client.SetBaseURL(kc.cluster)
-	cache.Store(kc.cluster, cacheEntry{""})
+	cache.Store(kc.cluster, cacheEntry{"", make(map[string]string)})
 	return kc
 }
 
@@ -331,6 +334,7 @@ func (kc *kc) Create(apiCall string, body string) (string, error) {
 }
 
 func (kc *kc) Replace(apiCall string, body string) (string, error) {
+	// applyIfNotFound
 	return kc.send(http.MethodPut, apiCall, body)
 }
 
@@ -377,6 +381,41 @@ func (kc *kc) Version() string {
 	return ce.version
 }
 
+// gvk == "gv.k" in map
+func (kc *kc) GetNameFromGvk(gv string, k string) (string, error) {
+	c, _ := cache.Load(kc.cluster)
+	ce := c.(cacheEntry)
+	name, present := ce.gvkMapName[gv+"."+k]
+	if !present {
+		resUrl := "/api/" + gv
+		if gv != kc.Version() {
+			resUrl = "/apis/" + gv
+		}
+		r, err := kc.Accept(Yaml).Get(resUrl)
+		if err != nil {
+			return "", err
+		}
+		rl, err := yjq.Eval2List(yjq.YqEval, `.resources[] | select(.name | contains("/") | not) | .kind + "," + .name`, r)
+		if err != nil {
+			return "", err
+		}
+		for _, le := range rl {
+			kn := strings.Split(le, ",")
+			_k := kn[0]
+			_n := kn[1]
+			ce.gvkMapName[gv+"."+_k] = _n
+			if _k == k {
+				name = _n
+				present = true
+			}
+		}
+	}
+	if !present {
+		return "", fmt.Errorf("name not found for groupVersion=%s and kind=%s", gv, k)
+	}
+	return name, nil
+}
+
 func (kc *kc) SetGetParams(queryParams map[string]string) Kc {
 	kc.client.SetQueryParams(queryParams)
 	return kc
@@ -417,6 +456,7 @@ func (kc *kc) send(method string, apiCall string, yamlBody string) (string, erro
 	switch {
 	case http.MethodPatch == method:
 		res, kc.err = kc.client.R().
+			SetHeader("Accept", kc.accept).
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetHeader("Content-Type", "application/apply-patch+yaml").

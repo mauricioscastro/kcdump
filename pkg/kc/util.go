@@ -57,7 +57,7 @@ func (kc *kc) ApiResources() (string, error) {
 	if e != nil {
 		return "", e
 	}
-	apisList, e := yjq.Eval2List(yjq.JqEval, `["/api/%s", "/apis/" + .groups[].preferredVersion.groupVersion] | .[]`, r, kc.Version())
+	apisList, e := yjq.Eval2List(yjq.JqEval, `["/api/%s", "/apis/" + .groups[].versions.[].groupVersion] | .[]`, r, kc.Version())
 	if e != nil {
 		return "", e
 	}
