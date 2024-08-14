@@ -44,11 +44,6 @@ var (
 	overrideAcceptWithYaml map[string]string
 )
 
-func init() {
-	overrideAcceptWithJson = map[string]string{"Accept": "application/" + Json}
-	overrideAcceptWithYaml = map[string]string{"Accept": "application/" + Yaml}
-}
-
 type (
 	// Kc represents a kubernetes client
 	Kc interface {
@@ -56,12 +51,14 @@ type (
 		SetCert(cert tls.Certificate) Kc
 		SetCluster(cluster string) Kc
 		Get(apiCall string, headers ...map[string]string) (string, error)
-		modify(modifier modifierFunc, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
+		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
 		Apply(apiCall string, body string) (string, error)
-		Create(apiCall string, body string) (string, error)
-		Replace(apiCall string, body string) (string, error)
+		applyModifier(apiUrl string, body string, not_used bool) (string, error)
+		Create(apiCall string, body string, applyIfFound bool) (string, error)
+		Replace(apiCall string, body string, applyIfNotFound bool) (string, error)
 		DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
-		Delete(apiCall string, ignoreNotFound bool, body ...string) (string, error)
+		Delete(apiCall string, ignoreNotFound bool) (string, error)
+		deleteModifier(apiUrl string, not_used string, ignoreNotFound bool) (string, error)
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
 		Accept(format string) Kc
@@ -101,7 +98,8 @@ type (
 	// should return ('transformed response', 'transformed error')
 	ResponseTransformer func(Kc) (string, error)
 
-	modifierFunc func(string, bool, ...string) (string, error)
+	// apiUrl, body, ignore
+	modifier func(string, string, bool) (string, error)
 
 	cacheEntry struct {
 		version              string
@@ -110,7 +108,9 @@ type (
 )
 
 func init() {
-	cache = sync.Map{} //currently only caching api version
+	cache = sync.Map{} 
+	overrideAcceptWithJson = map[string]string{"Accept": "application/" + Json}
+	overrideAcceptWithYaml = map[string]string{"Accept": "application/" + Yaml}
 }
 
 func SetLogLevel(level string) {
@@ -455,8 +455,7 @@ func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName strin
 	return apiCallList, nil
 }
 
-// body is not used. kept for compatability with modifier func type
-func (kc *kc) Delete(apiCall string, ignoreNotFound bool, body ...string) (string, error) {
+func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound bool) (string, error) {
 	kc.api = apiCall
 	resp, err := kc.client.SetHeader("Accept", kc.accept).R().Delete(apiCall)
 	if err != nil {
@@ -473,6 +472,11 @@ func (kc *kc) Delete(apiCall string, ignoreNotFound bool, body ...string) (strin
 	kc.status = resp.Status()
 	kc.statusCode = resp.StatusCode()
 	return kc.resp, nil
+}
+
+// body is not used. kept for compatability with modifier func type
+func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
+	return deleteModifier(apiCall, ignoreNotFound, "")
 }
 
 func (kc *kc) Version() string {
