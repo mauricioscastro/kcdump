@@ -84,6 +84,23 @@ func init() {
 
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
 func main() {
+	// log.SetLoggerLevel("debug")
+	// _kc := kc.NewKc()
+	// body, _ := io.ReadAll(os.Stdin)
+	// apis, err := _kc.CreateManifest(string(body), true)
+	// // apis, _ := _kc.Accept(kc.Yaml).Get("/apis/hcreport.csa.latam.redhat.com/v1/configs/config-sample")
+	// // apis, _ := _kc.Accept(kc.Yaml).Get("/apis/apps/v1")
+	// // apis, err := _kc.GetNameFromGvk("storage.k8s.io/v1", "StorageClass")
+	// // apis, err := _kc.NsNames()
+	// // apis, err := _kc.Accept(kc.Yaml).Apply("/api/v1/namespaces/echo/services/echo", string(body))
+	// fmt.Println(apis)
+	// fmt.Println(err)
+	// // apis, err = _kc.GetNameFromGvk("v1", "Service")
+	// // fmt.Println(apis)
+	// // apis, _ = _kc.Accept(kc.Yaml).Get("/api/" + _kc.Version())
+	// // fmt.Println(apis)
+	// os.Exit(0)
+
 	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (default false)")
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
@@ -107,6 +124,8 @@ func main() {
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.Parse()
 
+	log.SetLoggerLevel(logLevel)
+
 	viper.BindPFlags(pflag.CommandLine)
 	viper.SetConfigFile(config)
 
@@ -114,21 +133,18 @@ func main() {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			logger.Info("no configuration file found")
 		} else {
-			logger.Error("could not load configuration file " + config)
-			os.Exit(10)
+			logger.Info("configuration file " + config + " not loaded. using default parameters from command line")
 		}
-	} else {
-		if err := optionsFromViper(); err != nil {
-			logger.Error("reading options", zap.Error(err))
-			os.Exit(11)
-		}
+	}
+	if err := optionsFromViper(); err != nil {
+		logger.Error("reading options", zap.Error(err))
+		os.Exit(11)
 	}
 
 	os.Exit(dump())
 }
 
 func dump() int {
-	log.SetLoggerLevel(logLevel)
 	kc := Kc.NewKcWithConfigContext(kubeconfig, context)
 	if kc == nil {
 		fmt.Fprintf(os.Stderr, "unable to start k8s client from config file '%s' and context '%s'\n", kubeconfig, context)
