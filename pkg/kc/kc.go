@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,9 +38,16 @@ const (
 )
 
 var (
-	logger = log.Logger().Named("kcdump")
-	cache  sync.Map
+	logger                 = log.Logger().Named("kcdump")
+	cache                  sync.Map
+	overrideAcceptWithJson map[string]string
+	overrideAcceptWithYaml map[string]string
 )
+
+func init() {
+	overrideAcceptWithJson = map[string]string{"Accept": "application/" + Json}
+	overrideAcceptWithYaml = map[string]string{"Accept": "application/" + Yaml}
+}
 
 type (
 	// Kc represents a kubernetes client
@@ -47,11 +55,13 @@ type (
 		SetToken(token string) Kc
 		SetCert(cert tls.Certificate) Kc
 		SetCluster(cluster string) Kc
-		Get(apiCall string) (string, error)
+		Get(apiCall string, headers ...map[string]string) (string, error)
+		modify(modifier modifierFunc, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
 		Apply(apiCall string, body string) (string, error)
 		Create(apiCall string, body string) (string, error)
 		Replace(apiCall string, body string) (string, error)
-		Delete(apiCall string, ignoreNotFound bool) (string, error)
+		DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
+		Delete(apiCall string, ignoreNotFound bool, body ...string) (string, error)
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
 		Accept(format string) Kc
@@ -64,6 +74,7 @@ type (
 		Cluster() string
 		Api() string
 		Ns() (string, error)
+		NsNames() ([]string, error)
 		ApiResources() (string, error)
 		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error
 		setCert(cert []byte, key []byte)
@@ -71,7 +82,7 @@ type (
 		send(method string, apiCall string, body string) (string, error)
 		// get(apiCall string, yamlOutput bool) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
-		GetNameFromGvk(gv string, k string) (string, error)
+		GetApiResourceNameNamespacedFromGvk(gv string, k string) (string, string, error)
 	}
 
 	kc struct {
@@ -89,9 +100,12 @@ type (
 	// Optional transformer function to Get methods
 	// should return ('transformed response', 'transformed error')
 	ResponseTransformer func(Kc) (string, error)
-	cacheEntry          struct {
-		version    string
-		gvkMapName map[string]string // "gv.k" is key
+
+	modifierFunc func(string, bool, ...string) (string, error)
+
+	cacheEntry struct {
+		version              string
+		gvkMapNameNamespaced map[string]string // "gv:k" is key, "name:namespaced" is value
 	}
 )
 
@@ -306,9 +320,13 @@ func (kc *kc) Api() string {
 	return kc.api
 }
 
-func (kc *kc) Get(apiCall string) (string, error) {
+func (kc *kc) Get(apiCall string, headers ...map[string]string) (string, error) {
 	kc.api = apiCall
-	resp, err := kc.client.R().SetHeader("Accept", kc.accept).Get(apiCall)
+	rc := kc.client.SetHeader("Accept", kc.accept).R()
+	for _, h := range headers {
+		rc.SetHeaders(h)
+	}
+	resp, err := rc.Get(apiCall)
 	if err != nil {
 		return "", err
 	}
@@ -325,6 +343,61 @@ func (kc *kc) Get(apiCall string) (string, error) {
 	return kc.resp, kc.err
 }
 
+func (kc *kc) modify(modifier modifierFunc, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
+	if kc.readOnly {
+		return "", errors.New("trying to modify resources in read only mode")
+	}
+	var errList, respList strings.Builder
+	for docIndex := 0; ; docIndex++ {
+		yamlDoc, err := yjq.YqEval("select(di==%d)", yamlManifest, docIndex)
+		if err != nil {
+			respList, errList = updateRespLists("", err, errList, respList, "selecting doc from manifest", docIndex > 0)
+			break
+		}
+		if yamlDoc == "" {
+			break
+		}
+		gv, k, ns, name, err := getGvkNsNameFromYamlDoc(yamlDoc)
+		if err != nil {
+			respList, errList = updateRespLists("", err, errList, respList, "retrieving gv, k and name from doc", docIndex > 0)
+			continue
+		}
+		apiCall := "/api/"
+		if gv != kc.Version() {
+			apiCall = "/apis/"
+		}
+		apirsname, nsed, err := kc.GetApiResourceNameNamespacedFromGvk(gv, k)
+		if err != nil {
+			respList, errList = updateRespLists("", err, errList, respList, "retrieving api resource name from gv,k", docIndex > 0)
+			continue
+		}
+		namespaced, err := strconv.ParseBool(nsed)
+		if err != nil {
+			respList, errList = updateRespLists("", err, errList, respList, "parsing bool for namespaced value", docIndex > 0)
+			continue
+		}
+		if !namespaced {
+			apiCall = apiCall + gv + "/" + apirsname + "/" + name
+			logger.Debug("modifying non namespaced url " + apiCall)
+			r, e := modifier(apiCall, ignoreNotFound, yamlDoc)
+			respList, errList = updateRespLists(r, e, errList, respList, "non namespaced api "+apiCall, docIndex > 0)
+		} else {
+			urls, err := getApiUrlListForNs(kc, apiCall, gv, apirsname, name, ns, namespaces)
+			if err != nil {
+				return "", err
+			}
+			for i, apiUrl := range urls {
+				logger.Debug("modifying namespaced url " + apiUrl)
+				resp, err := modifier(apiUrl, ignoreNotFound, yamlDoc)
+				respList, errList = updateRespLists(resp, err, errList, respList, "namespaced url "+apiUrl, (i > 0 || docIndex > 0))
+			}
+		}
+	}
+	logger.Debug("errList=" + errList.String() + " respList=" + respList.String())
+	kc.resp, kc.err = respList.String(), errors.New(errList.String())
+	return kc.resp, kc.err
+}
+
 func (kc *kc) Apply(apiCall string, body string) (string, error) {
 	return kc.send(http.MethodPatch, apiCall, body)
 }
@@ -334,30 +407,68 @@ func (kc *kc) Create(apiCall string, body string) (string, error) {
 }
 
 func (kc *kc) Replace(apiCall string, body string) (string, error) {
-	// applyIfNotFound
+	// implement applyIfNotFound
 	return kc.send(http.MethodPut, apiCall, body)
 }
 
-func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
-	if kc.readOnly {
-		kc.resp, kc.err = "", errors.New("trying to delete in read only mode")
-		return kc.resp, kc.err
-	}
-	kc.api = apiCall
-	resp, err := kc.client.R().Delete(apiCall)
+func (kc *kc) DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
+	return kc.modify(kc.Delete, yamlManifest, ignoreNotFound, namespaces...)
+}
+
+func updateRespLists(resp string, err error, errList strings.Builder, respList strings.Builder, msg string, appendNl bool) (strings.Builder, strings.Builder) {
 	if err != nil {
-		kc.resp, kc.err = "", err
-		return kc.resp, kc.err
+		if appendNl {
+			errList.WriteString("\n")
+		}
+		errList.WriteString(fmt.Sprintf("%s: %s", msg, err.Error()))
+	} else {
+		if appendNl {
+			respList.WriteString("\n")
+		}
+		respList.WriteString(resp)
+	}
+	return respList, errList
+}
+
+func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName string, name string, nsFromDoc string, namespaces []string) ([]string, error) {
+	if nsFromDoc != "" {
+		if len(namespaces) != 0 {
+			logger.Warn("namespace specified in document has precedence and extra namespaces given will be ignored", zap.Strings("namespaces", namespaces))
+		}
+		namespaces = []string{nsFromDoc}
+	} else {
+		if len(namespaces) == 0 {
+			return []string{}, errors.New("no namespace specified") // use default? no
+		}
+		if namespaces[0] == "*" {
+			all, err := kc.NsNames()
+			if err != nil {
+				return []string{}, err
+			}
+			namespaces = all
+		}
+	}
+	apiCallList := []string{}
+	for _, nsname := range namespaces {
+		apiCallList = append(apiCallList, apiCall+gv+"/namespaces/"+nsname+"/"+apiResourceName+"/"+name)
+	}
+	return apiCallList, nil
+}
+
+// body is not used. kept for compatability with modifier func type
+func (kc *kc) Delete(apiCall string, ignoreNotFound bool, body ...string) (string, error) {
+	kc.api = apiCall
+	resp, err := kc.client.SetHeader("Accept", kc.accept).R().Delete(apiCall)
+	if err != nil {
+		return "", err
 	}
 	logResponse(apiCall, resp)
 	if resp.StatusCode() == http.StatusNotFound && ignoreNotFound {
-		kc.resp, kc.err = "", nil
-		return kc.resp, kc.err
+		return "", nil
 	}
 	kc.resp = string(resp.Body())
 	if resp.StatusCode() >= 400 {
-		kc.err = errors.New(resp.Status() + "\n" + kc.resp)
-		return "", kc.err
+		return "", errors.New(resp.Status() + "\n" + kc.resp)
 	}
 	kc.status = resp.Status()
 	kc.statusCode = resp.StatusCode()
@@ -368,7 +479,7 @@ func (kc *kc) Version() string {
 	c, _ := cache.Load(kc.cluster)
 	ce := c.(cacheEntry)
 	if ce.version == "" {
-		kc.Accept(Json).Get("/api")
+		kc.Get("/api", overrideAcceptWithJson)
 		if kc.err == nil {
 			ce.version, kc.err = yjq.JqEval(`.versions[-1] // ""`, kc.resp)
 		}
@@ -381,39 +492,41 @@ func (kc *kc) Version() string {
 	return ce.version
 }
 
-// gvk == "gv.k" in map
-func (kc *kc) GetNameFromGvk(gv string, k string) (string, error) {
+// gvk == "gv:k" in map
+// map is "gv:k" -> "name:namespaced"
+func (kc *kc) GetApiResourceNameNamespacedFromGvk(gv string, k string) (string, string, error) {
 	c, _ := cache.Load(kc.cluster)
 	ce := c.(cacheEntry)
-	name, present := ce.gvkMapName[gv+"."+k]
+	nameNamespaced, present := ce.gvkMapNameNamespaced[gv+":"+k]
 	if !present {
 		resUrl := "/api/" + gv
 		if gv != kc.Version() {
 			resUrl = "/apis/" + gv
 		}
-		r, err := kc.Accept(Yaml).Get(resUrl)
+		r, err := kc.Get(resUrl, overrideAcceptWithYaml)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		rl, err := yjq.Eval2List(yjq.YqEval, `.resources[] | select(.name | contains("/") | not) | .kind + "," + .name`, r)
+		rl, err := yjq.Eval2List(yjq.YqEval, `.resources[] | select(.name | contains("/") | not) | .kind + "," + .name + ":" + .namespaced`, r)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		for _, le := range rl {
 			kn := strings.Split(le, ",")
 			_k := kn[0]
 			_n := kn[1]
-			ce.gvkMapName[gv+"."+_k] = _n
+			ce.gvkMapNameNamespaced[gv+":"+_k] = _n
 			if _k == k {
-				name = _n
+				nameNamespaced = _n
 				present = true
 			}
 		}
 	}
 	if !present {
-		return "", fmt.Errorf("name not found for groupVersion=%s and kind=%s", gv, k)
+		return "", "", fmt.Errorf("name not found for groupVersion=%s and kind=%s", gv, k)
 	}
-	return name, nil
+	r := strings.Split(nameNamespaced, ":")
+	return r[0], r[1], nil
 }
 
 func (kc *kc) SetGetParams(queryParams map[string]string) Kc {
@@ -447,29 +560,27 @@ func logResponse(api string, resp *resty.Response) {
 }
 
 func (kc *kc) send(method string, apiCall string, yamlBody string) (string, error) {
-	if kc.readOnly {
-		kc.resp, kc.err = "", errors.New("trying to write in read only mode")
-		return kc.resp, kc.err
-	}
 	kc.api = apiCall
-	var res *resty.Response
+	var (
+		res *resty.Response
+		req = kc.client.SetHeader("Accept", kc.accept).R()
+	)
 	switch {
 	case http.MethodPatch == method:
-		res, kc.err = kc.client.R().
-			SetHeader("Accept", kc.accept).
+		res, kc.err = req.
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetHeader("Content-Type", "application/apply-patch+yaml").
 			Patch(apiCall)
 	case http.MethodPost == method:
-		res, kc.err = kc.client.R().
+		res, kc.err = req.
 			SetBody(yamlBody).
 			SetHeader("Content-Type", "application/yaml").
 			Post(apiCall)
 	case http.MethodPut == method:
 		yamlBody, kc.err = kc.setResourceVersion(apiCall, yamlBody)
 		if kc.err == nil {
-			res, kc.err = kc.client.R().
+			res, kc.err = req.
 				SetBody(yamlBody).
 				SetHeader("Content-Type", "application/yaml").
 				Put(apiCall)
@@ -485,7 +596,7 @@ func (kc *kc) send(method string, apiCall string, yamlBody string) (string, erro
 }
 
 func (kc *kc) setResourceVersion(apiCall string, newResource string) (string, error) {
-	r, err := kc.Accept(Json).Get(apiCall)
+	r, err := kc.Get(apiCall, overrideAcceptWithJson)
 	if err != nil {
 		return "", err
 	}
@@ -498,4 +609,16 @@ func (kc *kc) setResourceVersion(apiCall string, newResource string) (string, er
 		return "", err
 	}
 	return nr, nil
+}
+
+func getGvkNsNameFromYamlDoc(yaml string) (string, string, string, string, error) {
+	r, e := yjq.YqEval(`.apiVersion + "," + .kind + "," + (.metadata.namespace // "") + "," + .metadata.name`, yaml)
+	if e != nil {
+		return "", "", "", "", e
+	}
+	_r := strings.Split(r, ",")
+	if len(_r) != 4 {
+		return "", "", "", "", fmt.Errorf("cannot extract groupVersion, kind, namespace, name from yaml document")
+	}
+	return _r[0], _r[1], _r[2], _r[3], nil
 }

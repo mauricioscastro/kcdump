@@ -38,9 +38,17 @@ var (
 	dumpWorkerErrors      atomic.Value
 )
 
+func (kc *kc) NsNames() ([]string, error) {
+	r, e := kc.Get("/api/"+kc.Version()+"/namespaces", overrideAcceptWithJson)
+	if e != nil {
+		return []string{}, e
+	}
+	return yjq.Eval2List(yjq.YqEvalJ2Y, ".items[].metadata.name", r)
+}
+
 // returns yaml
 func (kc *kc) Ns() (string, error) {
-	r, e := kc.Accept(Json).Get("/api/" + kc.Version() + "/namespaces")
+	r, e := kc.Get("/api/"+kc.Version()+"/namespaces", overrideAcceptWithJson)
 	if e != nil {
 		return r, e
 	}
@@ -53,7 +61,7 @@ func (kc *kc) Ns() (string, error) {
 
 // returns yaml
 func (kc *kc) ApiResources() (string, error) {
-	r, e := kc.Accept(Json).Get("/apis")
+	r, e := kc.Get("/apis", overrideAcceptWithJson)
 	if e != nil {
 		return "", e
 	}
@@ -389,7 +397,8 @@ func getGroupVersionKind(kc *kc, path string, gvkExclusionList []string, gz bool
 }
 
 func getVersion(kc *kc, path string, format int, gz bool) error {
-	version, err := kc.Accept(Json).Get("/version")
+	// /version coes not accept yaml
+	version, err := kc.Get("/version", overrideAcceptWithJson)
 	if err != nil {
 		return err
 	}

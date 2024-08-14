@@ -19,6 +19,7 @@ package main
 import (
 	// "flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -85,21 +86,18 @@ func init() {
 
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
 func main() {
-	// body, _ := io.ReadAll(os.Stdin)
-
-	log.SetLoggerLevel("error")
+	log.SetLoggerLevel("debug")
+	body, _ := io.ReadAll(os.Stdin)
 	_kc := kc.NewKc()
-	// apis, _ := _kc.ApiResources()
-	// apis, _ := _kc.Accept(kc.Yaml).Get("/apis/storage.k8s.io/v1")
-	apis, err := _kc.GetNameFromGvk("storage.k8s.io/v1", "StorageClass")
+	apis, err := _kc.DeleteManifest(string(body), true)
+	// apis, _ := _kc.Accept(kc.Yaml).Get("/apis/hcreport.csa.latam.redhat.com/v1/configs/config-sample")
+	// apis, err := _kc.GetNameFromGvk("storage.k8s.io/v1", "StorageClass")
+	// apis, err := _kc.NsNames()
 	// apis, err := _kc.Accept(kc.Yaml).Apply("/api/v1/namespaces/echo/services/echo", string(body))
 	fmt.Println(apis)
-	fmt.Println(_kc.Version())
-	fmt.Println(_kc.Version())
 	fmt.Println(err)
-
-	apis, err = _kc.GetNameFromGvk("v1", "Service")
-	fmt.Println(apis)
+	// apis, err = _kc.GetNameFromGvk("v1", "Service")
+	// fmt.Println(apis)
 	// apis, _ = _kc.Accept(kc.Yaml).Get("/api/" + _kc.Version())
 	// fmt.Println(apis)
 	os.Exit(0)
@@ -134,12 +132,13 @@ func main() {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			logger.Info("no configuration file found")
 		} else {
-			logger.Info("could not load configuration file " + config)
+			logger.Error("could not load configuration file " + config)
+			os.Exit(10)
 		}
 	} else {
 		if err := optionsFromViper(); err != nil {
-			logger.Error("reading option", zap.Error(err))
-			os.Exit(10)
+			logger.Error("reading options", zap.Error(err))
+			os.Exit(11)
 		}
 	}
 
