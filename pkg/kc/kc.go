@@ -29,12 +29,13 @@ import (
 // -XPOST  -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: oc/4.11.0 (linux/amd64) kubernetes/262ac9c" 'https://192.168.49.2:8443/api/v1/namespaces/default/pods/dumpdb-866cfc54f4-s9szl/exec?command=tar&command=-xmf&command=-&command=-C&command=%2Ftmp&container=dumpdb&stderr=true&stdin=true&stdout=true'
 
 const (
-	Json                    = "json"
-	Yaml                    = "yaml"
-	TokenPath               = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	CurrentContext          = ".current-context"
-	queryContextForCluster  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .clusters[] | select(.name == $ctx.cluster) | .cluster.server // ""`
-	queryContextForUserAuth = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .users[] | select(.name == $ctx.user) | .user.%s`
+	Json                     = "json"
+	Yaml                     = "yaml"
+	TokenPath                = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	CurrentContext           = ".current-context"
+	queryContextForCluster   = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .clusters[] | select(.name == $ctx.cluster) | .cluster.server // ""`
+	queryContextForUserAuth  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .users[] | select(.name == $ctx.user) | .user.%s`
+	createModifierExtraParam = "?modifier_removed_name="
 )
 
 var (
@@ -51,12 +52,16 @@ type (
 		SetCert(cert tls.Certificate) Kc
 		SetCluster(cluster string) Kc
 		Get(apiCall string, headers ...map[string]string) (string, error)
-		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
+		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
 		ApplyManifest(yamlManifest string, namespaces ...string) (string, error)
 		Apply(apiCall string, body string) (string, error)
 		applyModifier(apiUrl string, body string, not_used bool) (string, error)
 		CreateManifest(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error)
 		Create(apiCall string, body string, applyIfFound bool) (string, error)
+
+		// regular k8s replace for a given manifest over zero or more namespaces.
+		// if first namespace item is "*" will replace in all namespaces.
+		// if manifest document(s) has '.metadata.namespace' other namespaces are ignored
 		ReplaceManifest(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error)
 		Replace(apiCall string, body string, applyIfNotFound bool) (string, error)
 		DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
@@ -353,7 +358,7 @@ func (kc *kc) Apply(apiCall string, body string) (string, error) {
 }
 
 func (kc *kc) ApplyManifest(yamlManifest string, namespaces ...string) (string, error) {
-	return kc.modify(kc.applyModifier, yamlManifest, false, namespaces...)
+	return kc.modify(kc.applyModifier, yamlManifest, false, false, namespaces...)
 }
 
 func (kc *kc) applyModifier(apiUrl string, body string, not_used bool) (string, error) {
@@ -364,21 +369,28 @@ func (kc *kc) applyModifier(apiUrl string, body string, not_used bool) (string, 
 func (kc *kc) Create(apiCall string, body string, applyIfFound bool) (string, error) {
 	logger.Debug("create", zap.String("apiCall", apiCall))
 	if applyIfFound {
-		_, e := kc.Get(apiCall)
+		// need to re-add the name to the url if it comes from modifier
+		_apiCall := strings.Replace(apiCall, createModifierExtraParam, "/", 1)
+		_, e := kc.Get(_apiCall)
 		if e == nil {
 			logger.Sugar().Infof("tried to create already existing resource %s. will apply instead", apiCall)
-			return kc.send(http.MethodPatch, apiCall, body)
+			return kc.send(http.MethodPatch, _apiCall, body)
 		}
+	}
+	// remove extra param from url if it comes from modifier
+	if strings.Contains(apiCall, createModifierExtraParam) {
+		apiCall = apiCall[0:strings.Index(apiCall, createModifierExtraParam)]
+		logger.Debug("create new apiCall", zap.String("apiCall", apiCall))
 	}
 	return kc.send(http.MethodPost, apiCall, body)
 }
 
 func (kc *kc) CreateManifest(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error) {
-	return kc.modify(kc.Create, yamlManifest, applyIfFound, namespaces...)
+	return kc.modify(kc.Create, yamlManifest, applyIfFound, true, namespaces...)
 }
 
 func (kc *kc) ReplaceManifest(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error) {
-	return kc.modify(kc.Replace, yamlManifest, applyIfNotFound, namespaces...)
+	return kc.modify(kc.Replace, yamlManifest, applyIfNotFound, false, namespaces...)
 }
 
 func (kc *kc) Replace(apiCall string, body string, applyIfNotFound bool) (string, error) {
@@ -398,7 +410,7 @@ func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
 }
 
 func (kc *kc) DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
-	return kc.modify(kc.deleteModifier, yamlManifest, ignoreNotFound, namespaces...)
+	return kc.modify(kc.deleteModifier, yamlManifest, ignoreNotFound, false, namespaces...)
 }
 
 func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound bool) (string, error) {
@@ -423,7 +435,7 @@ func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound boo
 	return kc.resp, nil
 }
 
-func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, namespaces ...string) (string, error) {
+func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCreating bool, namespaces ...string) (string, error) {
 	if kc.readOnly {
 		return "", errors.New("trying to modify resources in read only mode")
 	}
@@ -457,16 +469,26 @@ func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, namesp
 			continue
 		}
 		if !namespaced {
-			apiCall = apiCall + gv + "/" + apirsname + "/" + name
+			apiCall = apiCall + gv + "/" + apirsname
+			if isCreating {
+				apiCall = apiCall + createModifierExtraParam + name
+			} else {
+				apiCall = apiCall + "/" + name
+			}
 			logger.Debug("modifying non namespaced url " + apiCall)
 			r, e := modifier(apiCall, yamlDoc, ignore)
 			respList, errList = updateRespLists(r, e, errList, respList, "non namespaced api "+apiCall, docIndex > 0)
 		} else {
-			urls, err := getApiUrlListForNs(kc, apiCall, gv, apirsname, name, ns, namespaces)
+			urls, err := getApiUrlListForNs(kc, apiCall, gv, apirsname, ns, namespaces)
 			if err != nil {
 				return "", err
 			}
 			for i, apiUrl := range urls {
+				if isCreating {
+					apiUrl = apiUrl + createModifierExtraParam + name
+				} else {
+					apiUrl = apiUrl + "/" + name
+				}
 				logger.Debug("modifying namespaced url " + apiUrl)
 				resp, err := modifier(apiUrl, yamlDoc, ignore)
 				respList, errList = updateRespLists(resp, err, errList, respList, "namespaced url "+apiUrl, (i > 0 || docIndex > 0))
@@ -493,7 +515,7 @@ func updateRespLists(resp string, err error, errList strings.Builder, respList s
 	return respList, errList
 }
 
-func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName string, name string, nsFromDoc string, namespaces []string) ([]string, error) {
+func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName string, nsFromDoc string, namespaces []string) ([]string, error) {
 	if nsFromDoc != "" {
 		if len(namespaces) != 0 {
 			logger.Warn("namespace specified in document has precedence and extra namespaces given will be ignored", zap.Strings("namespaces", namespaces))
@@ -513,7 +535,7 @@ func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName strin
 	}
 	apiCallList := []string{}
 	for _, nsname := range namespaces {
-		apiCallList = append(apiCallList, apiCall+gv+"/namespaces/"+nsname+"/"+apiResourceName+"/"+name)
+		apiCallList = append(apiCallList, apiCall+gv+"/namespaces/"+nsname+"/"+apiResourceName)
 	}
 	return apiCallList, nil
 }
@@ -611,18 +633,21 @@ func (kc *kc) send(method string, apiCall string, yamlBody string) (string, erro
 		req = kc.client.SetHeader("Accept", kc.accept).R()
 	)
 	switch {
-	case http.MethodPatch == method:
+	case method == http.MethodPatch:
 		res, kc.err = req.
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
+			SetQueryParam("fieldValidation", "Ignore").
 			SetHeader("Content-Type", "application/apply-patch+yaml").
 			Patch(apiCall)
-	case http.MethodPost == method:
+	case method == http.MethodPost:
 		res, kc.err = req.
 			SetBody(yamlBody).
+			SetQueryParam("fieldManager", "skc-client-side-apply").
+			SetQueryParam("fieldValidation", "Ignore").
 			SetHeader("Content-Type", "application/yaml").
 			Post(apiCall)
-	case http.MethodPut == method:
+	case method == http.MethodPut:
 		yamlBody, kc.err = kc.setResourceVersion(apiCall, yamlBody)
 		if kc.err == nil {
 			res, kc.err = req.
