@@ -52,9 +52,12 @@ type (
 		SetCluster(cluster string) Kc
 		Get(apiCall string, headers ...map[string]string) (string, error)
 		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
+		ApplyManifest(yamlManifest string, namespaces ...string) (string, error)
 		Apply(apiCall string, body string) (string, error)
 		applyModifier(apiUrl string, body string, not_used bool) (string, error)
+		CreateManifest(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error)
 		Create(apiCall string, body string, applyIfFound bool) (string, error)
+		ReplaceManifest(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error)
 		Replace(apiCall string, body string, applyIfNotFound bool) (string, error)
 		DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
 		Delete(apiCall string, ignoreNotFound bool) (string, error)
@@ -108,7 +111,7 @@ type (
 )
 
 func init() {
-	cache = sync.Map{} 
+	cache = sync.Map{}
 	overrideAcceptWithJson = map[string]string{"Accept": "application/" + Json}
 	overrideAcceptWithYaml = map[string]string{"Accept": "application/" + Yaml}
 }
@@ -322,6 +325,8 @@ func (kc *kc) Api() string {
 
 func (kc *kc) Get(apiCall string, headers ...map[string]string) (string, error) {
 	kc.api = apiCall
+	kc.resp = ""
+	kc.err = nil
 	rc := kc.client.SetHeader("Accept", kc.accept).R()
 	for _, h := range headers {
 		rc.SetHeaders(h)
@@ -343,7 +348,82 @@ func (kc *kc) Get(apiCall string, headers ...map[string]string) (string, error) 
 	return kc.resp, kc.err
 }
 
-func (kc *kc) modify(modifier modifierFunc, yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
+func (kc *kc) Apply(apiCall string, body string) (string, error) {
+	return kc.applyModifier(apiCall, body, false)
+}
+
+func (kc *kc) ApplyManifest(yamlManifest string, namespaces ...string) (string, error) {
+	return kc.modify(kc.applyModifier, yamlManifest, false, namespaces...)
+}
+
+func (kc *kc) applyModifier(apiUrl string, body string, not_used bool) (string, error) {
+	logger.Debug("apply", zap.String("apiCall", apiUrl))
+	return kc.send(http.MethodPatch, apiUrl, body)
+}
+
+func (kc *kc) Create(apiCall string, body string, applyIfFound bool) (string, error) {
+	logger.Debug("create", zap.String("apiCall", apiCall))
+	if applyIfFound {
+		_, e := kc.Get(apiCall)
+		if e == nil {
+			logger.Sugar().Infof("tried to create already existing resource %s. will apply instead", apiCall)
+			return kc.send(http.MethodPatch, apiCall, body)
+		}
+	}
+	return kc.send(http.MethodPost, apiCall, body)
+}
+
+func (kc *kc) CreateManifest(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error) {
+	return kc.modify(kc.Create, yamlManifest, applyIfFound, namespaces...)
+}
+
+func (kc *kc) ReplaceManifest(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error) {
+	return kc.modify(kc.Replace, yamlManifest, applyIfNotFound, namespaces...)
+}
+
+func (kc *kc) Replace(apiCall string, body string, applyIfNotFound bool) (string, error) {
+	logger.Debug("replace", zap.String("apiCall", apiCall))
+	if applyIfNotFound {
+		_, e := kc.Get(apiCall)
+		if e != nil && kc.statusCode == 404 {
+			logger.Sugar().Infof("tried to replace non existent resource %s. will apply instead", apiCall)
+			return kc.send(http.MethodPatch, apiCall, body)
+		}
+	}
+	return kc.send(http.MethodPut, apiCall, body)
+}
+
+func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
+	return kc.deleteModifier(apiCall, "", ignoreNotFound)
+}
+
+func (kc *kc) DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
+	return kc.modify(kc.deleteModifier, yamlManifest, ignoreNotFound, namespaces...)
+}
+
+func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound bool) (string, error) {
+	logger.Debug("delete", zap.String("apiCall", apiCall))
+	kc.api = apiCall
+	kc.resp = ""
+	kc.err = nil
+	resp, err := kc.client.SetHeader("Accept", kc.accept).R().Delete(apiCall)
+	if err != nil {
+		return "", err
+	}
+	logResponse(apiCall, resp)
+	if resp.StatusCode() == http.StatusNotFound && ignoreNotFound {
+		return "", nil
+	}
+	kc.resp = string(resp.Body())
+	if resp.StatusCode() >= 400 {
+		return "", errors.New(resp.Status() + "\n" + kc.resp)
+	}
+	kc.status = resp.Status()
+	kc.statusCode = resp.StatusCode()
+	return kc.resp, nil
+}
+
+func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, namespaces ...string) (string, error) {
 	if kc.readOnly {
 		return "", errors.New("trying to modify resources in read only mode")
 	}
@@ -368,7 +448,7 @@ func (kc *kc) modify(modifier modifierFunc, yamlManifest string, ignoreNotFound 
 		}
 		apirsname, nsed, err := kc.GetApiResourceNameNamespacedFromGvk(gv, k)
 		if err != nil {
-			respList, errList = updateRespLists("", err, errList, respList, "retrieving api resource name from gv,k", docIndex > 0)
+			respList, errList = updateRespLists("", err, errList, respList, "retrieving api resource name from gvk="+gv+":"+k, docIndex > 0)
 			continue
 		}
 		namespaced, err := strconv.ParseBool(nsed)
@@ -379,7 +459,7 @@ func (kc *kc) modify(modifier modifierFunc, yamlManifest string, ignoreNotFound 
 		if !namespaced {
 			apiCall = apiCall + gv + "/" + apirsname + "/" + name
 			logger.Debug("modifying non namespaced url " + apiCall)
-			r, e := modifier(apiCall, ignoreNotFound, yamlDoc)
+			r, e := modifier(apiCall, yamlDoc, ignore)
 			respList, errList = updateRespLists(r, e, errList, respList, "non namespaced api "+apiCall, docIndex > 0)
 		} else {
 			urls, err := getApiUrlListForNs(kc, apiCall, gv, apirsname, name, ns, namespaces)
@@ -388,7 +468,7 @@ func (kc *kc) modify(modifier modifierFunc, yamlManifest string, ignoreNotFound 
 			}
 			for i, apiUrl := range urls {
 				logger.Debug("modifying namespaced url " + apiUrl)
-				resp, err := modifier(apiUrl, ignoreNotFound, yamlDoc)
+				resp, err := modifier(apiUrl, yamlDoc, ignore)
 				respList, errList = updateRespLists(resp, err, errList, respList, "namespaced url "+apiUrl, (i > 0 || docIndex > 0))
 			}
 		}
@@ -396,23 +476,6 @@ func (kc *kc) modify(modifier modifierFunc, yamlManifest string, ignoreNotFound 
 	logger.Debug("errList=" + errList.String() + " respList=" + respList.String())
 	kc.resp, kc.err = respList.String(), errors.New(errList.String())
 	return kc.resp, kc.err
-}
-
-func (kc *kc) Apply(apiCall string, body string) (string, error) {
-	return kc.send(http.MethodPatch, apiCall, body)
-}
-
-func (kc *kc) Create(apiCall string, body string) (string, error) {
-	return kc.send(http.MethodPost, apiCall, body)
-}
-
-func (kc *kc) Replace(apiCall string, body string) (string, error) {
-	// implement applyIfNotFound
-	return kc.send(http.MethodPut, apiCall, body)
-}
-
-func (kc *kc) DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
-	return kc.modify(kc.Delete, yamlManifest, ignoreNotFound, namespaces...)
 }
 
 func updateRespLists(resp string, err error, errList strings.Builder, respList strings.Builder, msg string, appendNl bool) (strings.Builder, strings.Builder) {
@@ -453,30 +516,6 @@ func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName strin
 		apiCallList = append(apiCallList, apiCall+gv+"/namespaces/"+nsname+"/"+apiResourceName+"/"+name)
 	}
 	return apiCallList, nil
-}
-
-func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound bool) (string, error) {
-	kc.api = apiCall
-	resp, err := kc.client.SetHeader("Accept", kc.accept).R().Delete(apiCall)
-	if err != nil {
-		return "", err
-	}
-	logResponse(apiCall, resp)
-	if resp.StatusCode() == http.StatusNotFound && ignoreNotFound {
-		return "", nil
-	}
-	kc.resp = string(resp.Body())
-	if resp.StatusCode() >= 400 {
-		return "", errors.New(resp.Status() + "\n" + kc.resp)
-	}
-	kc.status = resp.Status()
-	kc.statusCode = resp.StatusCode()
-	return kc.resp, nil
-}
-
-// body is not used. kept for compatability with modifier func type
-func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
-	return deleteModifier(apiCall, ignoreNotFound, "")
 }
 
 func (kc *kc) Version() string {
@@ -565,6 +604,8 @@ func logResponse(api string, resp *resty.Response) {
 
 func (kc *kc) send(method string, apiCall string, yamlBody string) (string, error) {
 	kc.api = apiCall
+	kc.resp = ""
+	kc.err = nil
 	var (
 		res *resty.Response
 		req = kc.client.SetHeader("Accept", kc.accept).R()
@@ -608,7 +649,7 @@ func (kc *kc) setResourceVersion(apiCall string, newResource string) (string, er
 	if err != nil {
 		return "", err
 	}
-	nr, err := yjq.YqEvalJ2Y(`.metadata.resourceVersion = "`+rv+`"`, newResource)
+	nr, err := yjq.YqEval(`.metadata.resourceVersion = "`+rv+`"`, newResource)
 	if err != nil {
 		return "", err
 	}
