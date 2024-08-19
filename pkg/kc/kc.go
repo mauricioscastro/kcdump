@@ -576,7 +576,7 @@ func copyTo(wsConn *websocket.Conn, localFile string, copyToCmd string) error {
 		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
 	}
 	if !strings.Contains(stdOutErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
-		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdOutErr.String())
+		return fmt.Errorf("%s file size = %d. different from dd stderr\n%sif trying to copy to a directory add '/' to the end of pod destination", localFile, info.Size(), stdOutErr.String())
 	}
 	return nil
 }

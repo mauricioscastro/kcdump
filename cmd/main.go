@@ -24,7 +24,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/mauricioscastro/kcdump/pkg/kc"
 	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
@@ -85,14 +84,14 @@ func init() {
 
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
 func main() {
-	log.SetLoggerLevel("debug")
-	_kc := kc.NewKc()
+	// log.SetLoggerLevel("debug")
+	// _kc := kc.NewKc()
 
-	// exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
-	err := _kc.Copy("pod:/default/dumpdb/dumpdb:/tmp", "file://tmp/abc.gz")
-	// fmt.Println(exec)
-	fmt.Println(err)
-	os.Exit(0)
+	// // exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
+	// err := _kc.Copy("file://tmp/abc.gz", "pod:/default/dumpdb/dumpdb:/tmp")
+	// // fmt.Println(exec)
+	// fmt.Println(err)
+	// os.Exit(0)
 
 	// body, _ := io.ReadAll(os.Stdin)
 	// apis, err := _kc.CreateManifest(string(body), true)
