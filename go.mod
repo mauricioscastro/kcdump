@@ -31,6 +31,7 @@ require (
 	github.com/dvln/toml v0.1.0 // indirect
 	github.com/dvln/yaml v0.0.0-20160128181541-7b7cd8618e7e // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect

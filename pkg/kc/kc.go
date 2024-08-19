@@ -2,10 +2,12 @@ package kc
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/coreybutler/go-fsutil"
 	"github.com/go-resty/resty/v2"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -53,6 +56,10 @@ type (
 		SetCluster(cluster string) Kc
 		Get(apiCall string, headers ...map[string]string) (string, error)
 		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
+
+		// regular k8s apply for a given manifest over zero or more namespaces.
+		// if first namespace item is "*" will apply to all namespaces.
+		// if manifest document(s) has '.metadata.namespace' other namespaces are ignored
 		ApplyManifest(yamlManifest string, namespaces ...string) (string, error)
 		Apply(apiCall string, body string) (string, error)
 		applyModifier(apiUrl string, body string, not_used bool) (string, error)
@@ -67,6 +74,20 @@ type (
 		DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
 		Delete(apiCall string, ignoreNotFound bool) (string, error)
 		deleteModifier(apiUrl string, not_used string, ignoreNotFound bool) (string, error)
+
+		// target format = namespace/pod/container. if container is omitted the first is used.
+		// pod name can be a suffix in such case first found pod name with that suffix from the
+		// replica list is used. returns stdout + stderr
+		Exec(target string, cmd []string) (string, error)
+
+		// src (source) and dst (destination) can be file:/absolute_path_to_local_file or
+		// pod:/namespace/pod/container:/absolute_path_to_file_in_pod
+		// if pod:/ or file:/ as destination have trailing "/" the source file name is used as file name
+		// and written into that path assumed to be a directory.
+		// copying to pod needs the following utilities in the targeted container system path:
+		// 'sh', 'dd', 'head' and 'base64', if they are not in the container's path
+		// pass then in that order in copyUtils. copying from pod needs 'dd' only.
+		Copy(src string, dst string, copyUtils ...string) error
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
 		Accept(format string) Kc
@@ -83,9 +104,7 @@ type (
 		ApiResources() (string, error)
 		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error
 		setCert(cert []byte, key []byte)
-		// response(resp *resty.Response, yamlOutput bool) (string, error)
 		send(method string, apiCall string, body string) (string, error)
-		// get(apiCall string, yamlOutput bool) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
 		GetApiResourceNameNamespacedFromGvk(gv string, k string) (string, string, error)
 	}
@@ -101,6 +120,7 @@ type (
 		status      string
 		accept      string
 		transformer ResponseTransformer
+		cert        tls.Certificate
 	}
 	// Optional transformer function to Get methods
 	// should return ('transformed response', 'transformed error')
@@ -290,6 +310,7 @@ func (kc *kc) SetToken(token string) Kc {
 }
 
 func (kc *kc) SetCert(cert tls.Certificate) Kc {
+	kc.cert = cert
 	kc.client.SetCertificates(cert)
 	return kc
 }
@@ -326,6 +347,332 @@ func (kc *kc) Status() string {
 
 func (kc *kc) Api() string {
 	return kc.api
+}
+
+func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string, string, string, error) {
+	if !strings.HasPrefix(src, "file:/") &&
+		!strings.HasPrefix(src, "pod:/") &&
+		!strings.HasPrefix(dst, "file:/") &&
+		!strings.HasPrefix(dst, "pod:/") {
+		return false, "", "", "", "", "", errors.New("source and or destiny does not follow 'file:/' 'pod:/' pattern")
+	}
+	if (strings.HasPrefix(src, "file:/") && strings.HasPrefix(dst, "file:/")) ||
+		(strings.HasPrefix(src, "pod:/") && strings.HasPrefix(dst, "pod:/")) {
+		return false, "", "", "", "", "", errors.New("source and destiny cannot be both 'file:/' or 'pod:/'")
+	}
+	// if (strings.HasPrefix(src, "file:/") && !fsutil.IsFile(src[6:])) ||
+	// 	(strings.HasPrefix(dst, "file:/") && !fsutil.IsFile(dst[6:])) {
+	// 	return false, "", "", "", "", "", errors.New("pattern 'file:/' used with non file (directory?) or inexistent")
+	// }
+	sending := strings.HasPrefix(src, "file:/")
+	localFile, podFile, namespace, pod, container := "", "", "", "", ""
+	local := src
+	remote := dst[5:]
+	if !sending {
+		local = dst
+		remote = src[5:]
+	}
+	localFile = local[6:]
+	logger.Debug("localfile=" + localFile)
+	if sending && !fsutil.IsFile(localFile) {
+		return false, "", "", "", "", "", errors.New("pattern 'file:/' in copyTo used with non file (directory?) or inexistent")
+	}
+	namespace, pod, container, err := getPodTarget(remote)
+	if err != nil {
+		return false, "", "", "", "", "", err
+	}
+	logger.Debug("namespace=" + namespace + " pod=" + pod + " container=" + container)
+	container_split := strings.Split(container, ":")
+	logger.Debug("", zap.Strings("container_split", container_split))
+	container = container_split[0]
+	if len(container_split) == 1 {
+		if !sending {
+			return false, "", "", "", "", "", errors.New("absent pod source file in pod:/" + remote)
+		}
+		logger.Info("no directory specified, copying to /tmp")
+		podFile = "/tmp/" + filepath.Base(localFile)
+	} else {
+		podFile = container_split[1]
+		if strings.HasSuffix(podFile, "/") {
+			if !sending {
+				return false, "", "", "", "", "", errors.New("absent pod source file in pod:/" + remote)
+			}
+			podFile = podFile + filepath.Base(localFile)
+		}
+	}
+	if !sending && strings.HasSuffix(localFile, "/") {
+		localFile = filepath.Base(podFile)
+	}
+	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
+	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " _pod=" + pod + " container=" + _container)
+	if _pod == "" || _container == "" {
+		return false, "", "", "", "", "", fmt.Errorf("not found pod %s container %s", pod, container)
+	}
+	return sending, localFile, podFile, namespace, _pod, _container, nil
+}
+
+func (kc *kc) Copy(src string, dst string, copyBinaries ...string) error {
+	sending, localFile, podFile, namespace, pod, container, err := getCopyParams(kc, src, dst)
+	if err != nil {
+		kc.err = err
+		return err
+	}
+	copyTools := []string{"sh", "dd", "head", "base64"}
+	copy(copyTools, copyBinaries)
+	shell := copyTools[0]
+	dd := copyTools[1]
+	head := copyTools[2]
+	base64 := copyTools[3]
+	copyToCmd := fmt.Sprintf("%s -c -1 << EOF | %s -d | %s bs=8192 of=%s\n", head, base64, dd, podFile)
+	stdin := true
+	queryCmd := "&command=" + url.QueryEscape(shell)
+	if !sending {
+		queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s", dd, url.QueryEscape("bs=8192"), url.QueryEscape("if="+podFile))
+		stdin = false
+	}
+	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("copyToCmd", copyToCmd), zap.String("reqCmd", queryCmd))
+	wsConn, resp, err := getWsConn(kc, namespace, pod, container, queryCmd, stdin)
+	if err != nil {
+		logger.Error("copy dial ws conn:", zap.Error(err))
+		return err
+	}
+	defer wsConn.Close()
+	for k, v := range resp.Header {
+		logger.Debug("copy resp headers", zap.Strings(k, v))
+	}
+	if sending {
+		return copyTo(wsConn, localFile, copyToCmd)
+	}
+	return copyFrom(wsConn, localFile)
+}
+
+func copyFrom(wsConn *websocket.Conn, localFile string) error {
+	var stdErr strings.Builder
+	writer, err := os.Create(localFile)
+	if err != nil {
+		logger.Error("ws dial copyFrom open file:" + err.Error())
+		return err
+	}
+	defer writer.Close()
+	for {
+		_, reader, err := wsConn.NextReader()
+		if err != nil {
+			ce, ok := err.(*websocket.CloseError)
+			if !ok || ce.Code != websocket.CloseNormalClosure {
+				logger.Error("ws dial copyFrom nextReader:" + err.Error())
+				return err
+			}
+			break
+		}
+		b := make([]byte, 8192)
+		for {
+			n, err := reader.Read(b)
+			// logger.Sugar().Debug("received ", n, "bytes")
+			if n > 0 {
+				if b[0] == 1 && len(b) > 1 {
+					// stdout, send to local file
+					_, err = writer.Write(b[1:n])
+					if err != nil {
+						logger.Error("ws dial copyFrom writing to local file:" + err.Error())
+						break
+					}
+				}
+				if b[0] == 2 && len(b) > 1 {
+					// stderr, collect
+					_, err = stdErr.Write(b[1:n])
+					if err != nil {
+						logger.Error("ws dial copyFrom writing to stderr buffer:" + err.Error())
+						break
+					}
+				}
+			}
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
+			}
+		}
+	}
+	info, err := os.Stat(localFile)
+	if err != nil {
+		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
+	}
+	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
+		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
+	}
+	return nil
+}
+
+func copyTo(wsConn *websocket.Conn, localFile string, copyToCmd string) error {
+	writerStatus := -1
+	stdinCode := []byte{0}
+	go func(writeStatus *int) {
+		err := wsConn.WriteMessage(websocket.TextMessage, append(stdinCode, []byte(copyToCmd)...))
+		if err != nil {
+			logger.Error("ws dial copyTo header:" + err.Error())
+			*writeStatus = 2
+			return
+		}
+		logger.Debug("sending file " + localFile)
+		reader, err := os.Open(localFile)
+		if err != nil {
+			logger.Error("ws dial copyTo open file:" + err.Error())
+			*writeStatus = 3
+		}
+		defer reader.Close()
+		writer, err := wsConn.NextWriter(websocket.BinaryMessage)
+		if err != nil {
+			logger.Error("ws dial copyTo create next writer:" + err.Error())
+			*writeStatus = 1
+		}
+		_, err = writer.Write(stdinCode)
+		if err != nil {
+			logger.Error("ws dial copyTo copy file:" + err.Error())
+			*writeStatus = 4
+		}
+		encoder := base64.NewEncoder(base64.StdEncoding, writer)
+		_, err = io.Copy(encoder, reader)
+		if err != nil {
+			logger.Error("ws dial copyTo copy file:" + err.Error())
+			*writeStatus = 4
+		}
+		encoder.Close()
+		err = wsConn.WriteMessage(websocket.TextMessage, append(stdinCode, []byte("\nEOF\n")...))
+		if err != nil {
+			logger.Error("ws dial copyTo tail:" + err.Error())
+			*writeStatus = 2
+			return
+		}
+		*writeStatus = 0
+	}(&writerStatus)
+	var stdOutErr strings.Builder
+	for {
+		_, m, e := wsConn.ReadMessage()
+		if e != nil {
+			ce, ok := e.(*websocket.CloseError)
+			if !ok || ce.Code != websocket.CloseNormalClosure {
+				logger.Error("ws dial copyTo read message:" + e.Error())
+			}
+			break
+		}
+		stdOutErr.WriteString(string(m[1:]))
+		if writerStatus >= 0 {
+			break
+		}
+	}
+	if writerStatus > 0 {
+		return fmt.Errorf("error sending file with status %d", writerStatus)
+	}
+	info, err := os.Stat(localFile)
+	if err != nil {
+		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
+	}
+	if !strings.Contains(stdOutErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
+		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdOutErr.String())
+	}
+	return nil
+}
+
+func (kc *kc) Exec(target string, cmd []string) (string, error) {
+	namespace, pod, container, err := getPodTarget(target)
+	if err != nil {
+		return "", err
+	}
+	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
+	if _pod == "" || _container == "" {
+		return "", fmt.Errorf("not found pod %s container %s", pod, container)
+	}
+	queryCmd := ""
+	for _, c := range cmd {
+		queryCmd = queryCmd + "&command=" + url.QueryEscape(c)
+	}
+	wsConn, resp, err := getWsConn(kc, namespace, _pod, _container, queryCmd, false)
+	if err != nil {
+		logger.Error("exec dial ws conn:", zap.Error(err))
+		return "", err
+	}
+	defer wsConn.Close()
+	for k, v := range resp.Header {
+		logger.Debug("exec resp headers", zap.Strings(k, v))
+	}
+	var stdOutErr strings.Builder
+	for {
+		_, m, e := wsConn.ReadMessage()
+		if e != nil {
+			ce, ok := e.(*websocket.CloseError)
+			if !ok || ce.Code != websocket.CloseNormalClosure {
+				logger.Error("ws read:" + e.Error())
+			}
+			break
+		}
+		stdOutErr.WriteString(string(m[1:]))
+	}
+	return stdOutErr.String(), nil
+}
+
+func getWsConn(kc *kc, namespace string, _pod string, _container string, queryCmd string, stdin bool) (*websocket.Conn, *http.Response, error) {
+	var header http.Header = nil
+	if kc.client.Token != "" {
+		header = make(http.Header)
+		header["Authorization"] = []string{"Bearer " + kc.client.Token}
+	}
+	dialer := websocket.DefaultDialer
+	dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	if kc.cert.PrivateKey != nil {
+		dialer.TLSClientConfig.Certificates = append(dialer.TLSClientConfig.Certificates, kc.cert)
+	}
+	server := strings.Replace(kc.cluster, "https://", "", -1)
+	wsUrl := "wss://%s/api/%s/namespaces/%s/pods/%s/exec?container=%s%s&stdout=true&stderr=true&stdin=%t"
+	wsUrl = fmt.Sprintf(wsUrl, server, kc.Version(), namespace, _pod, _container, queryCmd, stdin)
+	logger.Debug("ws url", zap.String("wsUrl", wsUrl))
+	return dialer.Dial(wsUrl, header)
+}
+
+func getPodTarget(target string) (string, string, string, error) {
+	_target, path := "", ""
+	if i := strings.Index(target, ":"); i != -1 {
+		_target = target[0:i]
+		path = target[i:]
+	}
+	logger.Debug("getPodTarget", zap.String("_target", _target), zap.String("path", path))
+	targetList := strings.Split(_target, "/")
+	if len(targetList) < 2 {
+		return "", "", "", fmt.Errorf("wrong targe format %s. should be 'namespace/pod[/container]'", target)
+	}
+	namespace := targetList[0]
+	pod := targetList[1]
+	container := ""
+	if len(targetList) > 2 {
+		container = targetList[2]
+	}
+	return namespace, pod, container + path, nil
+}
+
+func getPodAndContainer(kc *kc, ns string, podPrefix string, container string) (string, string) {
+	pods, e := kc.Get("/api/"+kc.Version()+"/namespaces/"+ns+"/pods", overrideAcceptWithYaml)
+	if e != nil {
+		logger.Error("", zap.Error(e))
+		return "", ""
+	}
+	list, e := yjq.Eval2List(yjq.YqEval, `.items[] | .metadata.name + "," + .spec.containers[0].name`, pods)
+	if e != nil {
+		logger.Error("", zap.Error(e))
+		return "", ""
+	}
+	pod, _container := "", ""
+	for _, p := range list {
+		item := strings.Split(p, ",")
+		if strings.HasPrefix(item[0], podPrefix) {
+			pod = item[0]
+			_container = item[1]
+			break
+		}
+	}
+	if container != "" {
+		_container = container
+	}
+	return pod, _container
 }
 
 func (kc *kc) Get(apiCall string, headers ...map[string]string) (string, error) {
