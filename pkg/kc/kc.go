@@ -518,20 +518,20 @@ func copyTo(wsConn *websocket.Conn, localFile string, copyToCmd string) error {
 		err := wsConn.WriteMessage(websocket.TextMessage, append(stdinCode, []byte(copyToCmd)...))
 		if err != nil {
 			logger.Error("ws dial copyTo header:" + err.Error())
-			*writeStatus = 2
+			*writeStatus = 1
 			return
 		}
 		logger.Debug("sending file " + localFile)
 		reader, err := os.Open(localFile)
 		if err != nil {
 			logger.Error("ws dial copyTo open file:" + err.Error())
-			*writeStatus = 3
+			*writeStatus = 2
 		}
 		defer reader.Close()
 		writer, err := wsConn.NextWriter(websocket.BinaryMessage)
 		if err != nil {
 			logger.Error("ws dial copyTo create next writer:" + err.Error())
-			*writeStatus = 1
+			*writeStatus = 3
 		}
 		_, err = writer.Write(stdinCode)
 		if err != nil {
@@ -542,13 +542,13 @@ func copyTo(wsConn *websocket.Conn, localFile string, copyToCmd string) error {
 		_, err = io.Copy(encoder, reader)
 		if err != nil {
 			logger.Error("ws dial copyTo copy file:" + err.Error())
-			*writeStatus = 4
+			*writeStatus = 5
 		}
 		encoder.Close()
 		err = wsConn.WriteMessage(websocket.TextMessage, append(stdinCode, []byte("\nEOF\n")...))
 		if err != nil {
 			logger.Error("ws dial copyTo tail:" + err.Error())
-			*writeStatus = 2
+			*writeStatus = 6
 			return
 		}
 		*writeStatus = 0
