@@ -87,6 +87,9 @@ type (
 		// copying to pod needs the following utilities in the targeted container system path:
 		// 'sh', 'dd', 'head' and 'base64', if they are not in the container's path
 		// pass then in that order in copyUtils. copying from pod needs 'dd' only.
+		// in pod:/ --> the pod name can be a prefix for which 1st found pod is used if
+		// mode than one replica exists. container is optional for which the 1st found is used.
+		// if pod file destination not specified wile copying to pod '/tmp' directory will be used as target.
 		Copy(src string, dst string, copyUtils ...string) error
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
@@ -400,13 +403,14 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 			podFile = podFile + filepath.Base(localFile)
 		}
 	}
+	logger.Sugar().Debug("sending=", sending, " localfile=", localFile)
 	if !sending && strings.HasSuffix(localFile, "/") {
-		localFile = filepath.Base(podFile)
+		localFile = localFile + filepath.Base(podFile)
 	}
 	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
 	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " _pod=" + pod + " container=" + _container)
 	if _pod == "" || _container == "" {
-		return false, "", "", "", "", "", fmt.Errorf("not found pod %s container %s", pod, container)
+		return false, "", "", "", "", "", fmt.Errorf("not found pod=%s container=%s", pod, container)
 	}
 	return sending, localFile, podFile, namespace, _pod, _container, nil
 }
@@ -443,10 +447,10 @@ func (kc *kc) Copy(src string, dst string, copyBinaries ...string) error {
 	if sending {
 		return copyTo(wsConn, localFile, copyToCmd)
 	}
-	return copyFrom(wsConn, localFile)
+	return copyFrom(wsConn, localFile, src)
 }
 
-func copyFrom(wsConn *websocket.Conn, localFile string) error {
+func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 	var stdErr strings.Builder
 	writer, err := os.Create(localFile)
 	if err != nil {
@@ -500,6 +504,9 @@ func copyFrom(wsConn *websocket.Conn, localFile string) error {
 	}
 	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
 		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
+	}
+	if strings.Contains(stdErr.String(), "dd: error") {
+		return fmt.Errorf("error copying from %s\n%s", src, stdErr.String())
 	}
 	return nil
 }
@@ -630,7 +637,7 @@ func getWsConn(kc *kc, namespace string, _pod string, _container string, queryCm
 }
 
 func getPodTarget(target string) (string, string, string, error) {
-	_target, path := "", ""
+	_target, path := target, ""
 	if i := strings.Index(target, ":"); i != -1 {
 		_target = target[0:i]
 		path = target[i:]
