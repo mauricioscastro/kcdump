@@ -2,7 +2,6 @@ package kc
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -81,16 +80,18 @@ type (
 		Exec(target string, cmd []string) (string, error)
 
 		// src (source) and dst (destination) can be file:/absolute_path_to_local_file or
-		// pod:/namespace/pod/container:/absolute_path_to_file_in_pod
-		// if pod:/ or file:/ as destination have trailing "/" the source file name is used as file name
-		// and written into that path assumed to be a directory.
-		// copying to pod needs the following utilities in the targeted container system path:
-		// 'sh', 'dd', 'head' and 'base64', if they are not in the container's path
-		// pass then in that order in copyUtils. copying from pod needs 'dd' only.
-		// in pod:/ --> the pod name can be a prefix for which 1st found pod is used if
-		// mode than one replica exists. container is optional for which the 1st found is used.
-		// if pod file destination not specified wile copying to pod '/tmp' directory will be used as target.
-		Copy(src string, dst string, copyUtils ...string) error
+		// pod:/namespace/pod/container:/absolute_path_to_file_in_container
+		// if 'pod:/' or 'file:/' as destination have trailing "/" the source file name is used
+		// as file name and written into that path assumed to be a directory.
+		// copy operations needs the targeted container to have the 'dd' utility in its path. if
+		// not in path you can set its absolute path location with SetDDpath().
+		// in 'pod:/[...]' the pod name can be a prefix for which 1st found pod is used if
+		// more than one replica exists. container is optional and when this happens the 1st found
+		// is used. if pod file destination is not specified while copying to pod '/tmp'
+		// directory will be used as target.
+		Copy(src string, dst string) error
+		// for copy operation
+		SetDDpath(ddAbsolutePath string) Kc
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
 		Accept(format string) Kc
@@ -113,15 +114,17 @@ type (
 	}
 
 	kc struct {
-		client      *resty.Client
-		readOnly    bool
-		cluster     string
-		api         string
-		resp        string
-		err         error
-		statusCode  int
-		status      string
-		accept      string
+		client     *resty.Client
+		readOnly   bool
+		cluster    string
+		api        string
+		resp       string
+		err        error
+		statusCode int
+		status     string
+		accept     string
+		// for copy operation
+		ddPath      string
 		transformer ResponseTransformer
 		cert        tls.Certificate
 	}
@@ -292,6 +295,7 @@ func newKc() Kc {
 		SetHeader("User-Agent", "kc/v.0.0.0")
 	kc.readOnly = false
 	kc.accept = "application/yaml"
+	kc.ddPath = "dd" // for copy operation
 	yjq.SilenceYqLogs()
 	return &kc
 }
@@ -315,6 +319,11 @@ func (kc *kc) SetToken(token string) Kc {
 func (kc *kc) SetCert(cert tls.Certificate) Kc {
 	kc.cert = cert
 	kc.client.SetCertificates(cert)
+	return kc
+}
+
+func (kc *kc) SetDDpath(ddAbsolutePath string) Kc {
+	kc.ddPath = ddAbsolutePath
 	return kc
 }
 
@@ -363,10 +372,6 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 		(strings.HasPrefix(src, "pod:/") && strings.HasPrefix(dst, "pod:/")) {
 		return false, "", "", "", "", "", errors.New("source and destiny cannot be both 'file:/' or 'pod:/'")
 	}
-	// if (strings.HasPrefix(src, "file:/") && !fsutil.IsFile(src[6:])) ||
-	// 	(strings.HasPrefix(dst, "file:/") && !fsutil.IsFile(dst[6:])) {
-	// 	return false, "", "", "", "", "", errors.New("pattern 'file:/' used with non file (directory?) or inexistent")
-	// }
 	sending := strings.HasPrefix(src, "file:/")
 	localFile, podFile, namespace, pod, container := "", "", "", "", ""
 	local := src
@@ -415,26 +420,25 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 	return sending, localFile, podFile, namespace, _pod, _container, nil
 }
 
-func (kc *kc) Copy(src string, dst string, copyBinaries ...string) error {
+func (kc *kc) Copy(src string, dst string) error {
 	sending, localFile, podFile, namespace, pod, container, err := getCopyParams(kc, src, dst)
 	if err != nil {
 		kc.err = err
 		return err
 	}
-	copyTools := []string{"sh", "dd", "head", "base64"}
-	copy(copyTools, copyBinaries)
-	shell := copyTools[0]
-	dd := copyTools[1]
-	head := copyTools[2]
-	base64 := copyTools[3]
-	copyToCmd := fmt.Sprintf("%s -c -1 << EOF | %s -d | %s bs=8192 of=%s\n", head, base64, dd, podFile)
-	stdin := true
-	queryCmd := "&command=" + url.QueryEscape(shell)
-	if !sending {
-		queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s", dd, url.QueryEscape("bs=8192"), url.QueryEscape("if="+podFile))
-		stdin = false
+	stdin := false
+	fileSizeReportedToDD := int64(-1)
+	queryCmd := fmt.Sprintf("&command=%s&command=%s", kc.ddPath, url.QueryEscape("if="+podFile))
+	if sending {
+		stdin = true
+		info, err := os.Stat(localFile)
+		if err != nil {
+			return err
+		}
+		fileSizeReportedToDD = info.Size()
+		queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s&command=%s%d", kc.ddPath, url.QueryEscape("of="+podFile), url.QueryEscape("bs=1"), url.QueryEscape("count="), fileSizeReportedToDD)
 	}
-	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("copyToCmd", copyToCmd), zap.String("reqCmd", queryCmd))
+	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("reqCmd", queryCmd))
 	wsConn, resp, err := getWsConn(kc, namespace, pod, container, queryCmd, stdin)
 	if err != nil {
 		logger.Error("copy dial ws conn:", zap.Error(err))
@@ -445,7 +449,7 @@ func (kc *kc) Copy(src string, dst string, copyBinaries ...string) error {
 		logger.Debug("copy resp headers", zap.Strings(k, v))
 	}
 	if sending {
-		return copyTo(wsConn, localFile, copyToCmd)
+		return copyTo(wsConn, localFile, fileSizeReportedToDD)
 	}
 	return copyFrom(wsConn, localFile, src)
 }
@@ -511,72 +515,48 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 	return nil
 }
 
-func copyTo(wsConn *websocket.Conn, localFile string, copyToCmd string) error {
-	writerStatus := -1
-	stdinCode := []byte{0}
-	go func(writeStatus *int) {
-		err := wsConn.WriteMessage(websocket.TextMessage, append(stdinCode, []byte(copyToCmd)...))
-		if err != nil {
-			logger.Error("ws dial copyTo header:" + err.Error())
-			*writeStatus = 1
-			return
-		}
-		logger.Debug("sending file " + localFile)
-		reader, err := os.Open(localFile)
-		if err != nil {
-			logger.Error("ws dial copyTo open file:" + err.Error())
-			*writeStatus = 2
-		}
-		defer reader.Close()
-		writer, err := wsConn.NextWriter(websocket.BinaryMessage)
-		if err != nil {
-			logger.Error("ws dial copyTo create next writer:" + err.Error())
-			*writeStatus = 3
-		}
-		_, err = writer.Write(stdinCode)
-		if err != nil {
-			logger.Error("ws dial copyTo copy file:" + err.Error())
-			*writeStatus = 4
-		}
-		encoder := base64.NewEncoder(base64.StdEncoding, writer)
-		_, err = io.Copy(encoder, reader)
-		if err != nil {
-			logger.Error("ws dial copyTo copy file:" + err.Error())
-			*writeStatus = 5
-		}
-		encoder.Close()
-		err = wsConn.WriteMessage(websocket.TextMessage, append(stdinCode, []byte("\nEOF\n")...))
-		if err != nil {
-			logger.Error("ws dial copyTo tail:" + err.Error())
-			*writeStatus = 6
-			return
-		}
-		*writeStatus = 0
-	}(&writerStatus)
-	var stdOutErr strings.Builder
+func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64) error {
+	writer, err := wsConn.NextWriter(websocket.BinaryMessage)
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+	_, err = writer.Write([]byte{0})
+	if err != nil {
+		return err
+	}
+	logger.Debug("sending file " + localFile)
+	reader, err := os.Open(localFile)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	written, err := io.Copy(writer, reader)
+	if err != nil {
+		return err
+	}
+	if written != fileSizeReportedToDD {
+		return fmt.Errorf("reported file size to dd %d different from copy %d", fileSizeReportedToDD, written)
+	}
+	writer.Close()
+	var stdErr strings.Builder
 	for {
 		_, m, e := wsConn.ReadMessage()
 		if e != nil {
 			ce, ok := e.(*websocket.CloseError)
 			if !ok || ce.Code != websocket.CloseNormalClosure {
-				logger.Error("ws dial copyTo read message:" + e.Error())
+				logger.Error("ws dial copyTo read message: " + e.Error())
 			}
 			break
 		}
-		stdOutErr.WriteString(string(m[1:]))
-		if writerStatus >= 0 {
-			break
-		}
-	}
-	if writerStatus > 0 {
-		return fmt.Errorf("error sending file with status %d", writerStatus)
+		stdErr.WriteString(string(m[1:]))
 	}
 	info, err := os.Stat(localFile)
 	if err != nil {
 		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
 	}
-	if !strings.Contains(stdOutErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
-		return fmt.Errorf("%s file size = %d. different from dd stderr\n%sif trying to copy to a directory add '/' to the end of pod destination", localFile, info.Size(), stdOutErr.String())
+	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
+		return fmt.Errorf("%s file size = %d. different from dd stderr\nif trying to copy to a directory add '/' to the end of pod destination\n%s", localFile, info.Size(), stdErr.String())
 	}
 	return nil
 }
