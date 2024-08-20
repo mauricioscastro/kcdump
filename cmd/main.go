@@ -24,7 +24,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/mauricioscastro/kcdump/pkg/kc"
 	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
@@ -58,6 +57,7 @@ var (
 	asyncWorkers     int
 	defaultChunkSize int
 	config           string
+	copyToPod        string
 )
 
 func init() {
@@ -85,14 +85,14 @@ func init() {
 
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
 func main() {
-	log.SetLoggerLevel("debug")
-	_kc := kc.NewKc()
+	// log.SetLoggerLevel("debug")
+	// _kc := kc.NewKc()
 
-	// exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
-	err := _kc.Copy("file://tmp/xyz.gz", "pod:/default/dumpdb/dumpdb:/tmp/")
-	// fmt.Println(exec)
-	fmt.Println(err)
-	os.Exit(0)
+	// // exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
+	// err := _kc.Copy("file://tmp/xyz.gz", "pod:/default/dumpdb/dumpdb:/tmp/")
+	// // fmt.Println(exec)
+	// fmt.Println(err)
+	// os.Exit(0)
 
 	// body, _ := io.ReadAll(os.Stdin)
 	// apis, err := _kc.CreateManifest(string(body), true)
@@ -130,6 +130,7 @@ func main() {
 	pflag.StringToIntVar(&syncChunkMap, "sync-chunk-map", syncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size")
 	pflag.StringToIntVar(&asyncChunkMap, "async-chunk-map", asyncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers")
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
+	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)
@@ -226,6 +227,7 @@ func optionsFromViper() error {
 	kubeconfig = viper.GetString("kubeconfig")
 	context = viper.GetString("context")
 	logLevel = viper.GetString("loglevel")
+	copyToPod = viper.GetString("copy-to-pod")
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
 	if syncChunkMap, err = getStringMapInt(viper.Get("sync-chunk-map")); err != nil {
