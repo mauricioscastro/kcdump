@@ -90,7 +90,8 @@ type (
 		// is used. if pod file destination is not specified while copying to pod '/tmp'
 		// directory will be used as target.
 		Copy(src string, dst string) error
-		// for copy operation
+		// 'dd' utility for copy operation if not in container path. default is "dd"
+		// as in (...)/exec?container=dumpdb&command=dd(...)&stdout=true&stderr=true&stdin=true"
 		SetDDpath(ddAbsolutePath string) Kc
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
@@ -323,7 +324,7 @@ func (kc *kc) SetCert(cert tls.Certificate) Kc {
 }
 
 func (kc *kc) SetDDpath(ddAbsolutePath string) Kc {
-	kc.ddPath = ddAbsolutePath
+	kc.ddPath = url.QueryEscape(ddAbsolutePath)
 	return kc
 }
 
