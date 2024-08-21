@@ -90,7 +90,7 @@ func main() {
 	// _kc := kc.NewKc()
 
 	// // exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
-	// err := _kc.Copy("file://home/macastro/.kube/kcdump/192_168_49_2_8443.json.gz", "pod:/default/dumpdb")
+	// err := _kc.Copy("pod:/default/dumpdb/dumpdb:/tmp/192_168_49_2_8443.json.gz", "file://tmp/")
 	// // fmt.Println(exec)
 	// fmt.Println(err)
 	// os.Exit(0)

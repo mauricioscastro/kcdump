@@ -432,7 +432,7 @@ func (kc *kc) Copy(src string, dst string) error {
 	}
 	stdin := false
 	fileSizeReportedToDD := int64(-1)
-	queryCmd := fmt.Sprintf("&command=%s&command=%s", kc.ddPath, url.QueryEscape("if="+podFile))
+	queryCmd := fmt.Sprintf("&command=%s&command=%s&command=%s", kc.ddPath, url.QueryEscape("bs=1"), url.QueryEscape("if="+podFile))
 	if sending {
 		stdin = true
 		info, err := os.Stat(localFile)
@@ -476,7 +476,7 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 			}
 			break
 		}
-		b := make([]byte, 8192)
+		b := make([]byte, 4096)
 		for {
 			n, err := reader.Read(b)
 			// logger.Sugar().Debug("received ", n, "bytes")
