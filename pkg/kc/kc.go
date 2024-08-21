@@ -439,7 +439,7 @@ func (kc *kc) Copy(src string, dst string) error {
 		if err != nil {
 			return err
 		}
-		fileSizeReportedToDD = info.Size() //int64(4096) //info.Size()
+		fileSizeReportedToDD = info.Size()
 		queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s&command=%s%d", kc.ddPath, url.QueryEscape("of="+podFile), url.QueryEscape("bs=1"), url.QueryEscape("count="), fileSizeReportedToDD)
 	}
 	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("reqCmd", queryCmd))
@@ -530,18 +530,19 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	b[0] = 0
 	read := int64(0)
 	for {
-		r, err := io.ReadFull(reader, b[1:])
-		read += int64(r)
+		r, err := reader.Read(b[1:])
 		if err == io.EOF {
 			break
 		}
-		err = wsConn.WriteMessage(websocket.BinaryMessage, b[:r+1])
 		if err != nil {
-			logger.Debug("copyTo wsConn.WriteMessage " + err.Error())
+			logger.Debug("copyTo. read from file " + err.Error())
 			return err
 		}
-		if err == io.ErrUnexpectedEOF {
-			break
+		read += int64(r)
+		err = wsConn.WriteMessage(websocket.BinaryMessage, b[:r+1])
+		if err != nil {
+			logger.Debug("copyTo. wsConn.WriteMessage " + err.Error())
+			return err
 		}
 	}
 	logger.Sugar().Debug("read=", read)
