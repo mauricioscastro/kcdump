@@ -83,13 +83,14 @@ func init() {
 	}
 }
 
-// readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g'
+// readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g'
+
 func main() {
 	// log.SetLoggerLevel("debug")
 	// _kc := kc.NewKc()
 
 	// // exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
-	// err := _kc.Copy("file://tmp/xyz.gz", "pod:/default/dumpdb/dumpdb:/tmp/")
+	// err := _kc.Copy("file://home/macastro/.kube/kcdump/192_168_49_2_8443.json.gz", "pod:/default/dumpdb")
 	// // fmt.Println(exec)
 	// fmt.Println(err)
 	// os.Exit(0)
@@ -202,7 +203,7 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	if e := kc.Dump(targetDir, xns, xgvk, syncChunkMap, asyncChunkMap, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, nil); e != nil {
+	if e := kc.Dump(targetDir, xns, xgvk, syncChunkMap, asyncChunkMap, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, copyToPod, nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}

@@ -128,7 +128,23 @@ func apiResourcesResponseTransformer(kc Kc) (string, error) {
 // the threads can be expressed through poolsize (0 or -1 to unbound it).
 // progress will be called at the end. You need to add thread safety mechanisms
 // to the code inside progress func().
-func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error {
+func (kc *kc) Dump(path string,
+	nsExclusionList []string,
+	gvkExclusionList []string,
+	syncChunkMap map[string]int,
+	asyncChunkMap map[string]int,
+	nologs bool,
+	gz bool,
+	tgz bool,
+	prune bool,
+	splitns bool,
+	splitgv bool,
+	format int,
+	poolSize int,
+	chunkSize int,
+	escapeEncodedJson bool,
+	copyToPod string,
+	progress func()) error {
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
 		return fmt.Errorf("unknown format")
 	}
@@ -142,7 +158,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 		}
 		splitns = false
 		if format == JSON_LINES {
-			format = JSON // trick the file writer and put the whole list in one line or else do not extract items.
+			format = JSON // trick the file writer and put the whole list in one line, or else, do not extract items.
 		}
 	}
 	dumpDir := strings.Replace(kc.cluster, "https://", "", -1)
@@ -161,23 +177,6 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	if format != YAML {
 		yq = yjq.YqEvalJ2JC
 	}
-	// big things to retrieve serially
-	// name.gv -> chunk size to use
-	// if len(syncChunkMap) == 0 {
-	// 	syncChunkMap = map[string]int{
-	// 		"configmaps.v1": 1,
-	// 		"packagemanifests.packages.operators.coreos.com/v1": 1,
-	// 		"apirequestcounts.apiserver.openshift.io/v1":        1,
-	// 		"customresourcedefinitions.apiextensions.k8s.io/v1": 1,
-	// 	}
-	// }
-	// if len(asyncChunkMap) == 0 {
-	// 	asyncChunkMap = map[string]int{
-	// 		"events.v1":               100,
-	// 		"events.events.k8s.io/v1": 100,
-	// 	}
-	// }
-	// retrieve gvk list and write
 	logger.Debug("retrieve gvk list and write")
 	apis, err := getGroupVersionKind(kc, path, gvkExclusionList, gz, format, escapeEncodedJson)
 	if err != nil {
@@ -236,13 +235,13 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	}
 	size := ""
 	if tgz {
-		if size, err = tgzAndPrune(path, prune); err != nil {
+		if size, err = tgzAndPrune(kc, path, prune, copyToPod); err != nil {
 			return err
 		}
 	}
 	// create big fat file
 	if !splitgv {
-		if size, err = joinAll(path, dumpDir, format, gzBigFile, nologs); err != nil {
+		if size, err = joinAll(kc, path, dumpDir, format, gzBigFile, nologs, copyToPod); err != nil {
 			return err
 		}
 	}
@@ -267,7 +266,7 @@ func (kc *kc) Dump(path string, nsExclusionList []string, gvkExclusionList []str
 	return nil
 }
 
-func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) (string, error) {
+func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bool, copyToPod string) (string, error) {
 	bigFileName := dumpDir
 	if format == YAML {
 		bigFileName = bigFileName + ".yaml"
@@ -314,10 +313,16 @@ func joinAll(path string, dumpDir string, format int, gz bool, nologs bool) (str
 	if err != nil {
 		return "", err
 	}
+	if copyToPod != "" {
+		logger.Info("copying " + "file:/" + bigFilePath + " to pod:/" + copyToPod)
+		if err = kc.Copy("file:/"+bigFilePath, "pod:/"+copyToPod); err != nil {
+			return "", err
+		}
+	}
 	return sz, nil
 }
 
-func tgzAndPrune(path string, prune bool) (string, error) {
+func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string) (string, error) {
 	tgzpath := path[:len(path)-1] + ".tar"
 	if err := archive(path, tgzpath); err != nil {
 		logger.Error("tape archiving error", zap.Error(err))
@@ -332,6 +337,12 @@ func tgzAndPrune(path string, prune bool) (string, error) {
 	sz, err := fsutil.Size(tgzpath + ".gz")
 	if err != nil {
 		return "", err
+	}
+	if copyToPod != "" {
+		logger.Info("copying " + "file:/" + tgzpath + ".gz" + " to pod:/" + copyToPod)
+		if err = kc.Copy("file:/"+tgzpath+".gz", "pod:/"+copyToPod); err != nil {
+			return "", err
+		}
 	}
 	return sz, nil
 }

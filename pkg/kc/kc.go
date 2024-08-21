@@ -75,7 +75,7 @@ type (
 		deleteModifier(apiUrl string, not_used string, ignoreNotFound bool) (string, error)
 
 		// target format = namespace/pod/container. if container is omitted the first is used.
-		// pod name can be a suffix in such case first found pod name with that suffix from the
+		// pod name can be a prefix in such case first found pod name with that suffix from the
 		// replica list is used. returns stdout + stderr
 		Exec(target string, cmd []string) (string, error)
 
@@ -90,6 +90,7 @@ type (
 		// is used. if pod file destination is not specified while copying to pod '/tmp'
 		// directory will be used as target.
 		Copy(src string, dst string) error
+
 		// 'dd' utility for copy operation if not in container path. default is "dd"
 		// as in (...)/exec?container=dumpdb&command=dd(...)&stdout=true&stderr=true&stdin=true"
 		SetDDpath(ddAbsolutePath string) Kc
@@ -107,7 +108,7 @@ type (
 		Ns() (string, error)
 		NsNames() ([]string, error)
 		ApiResources() (string, error)
-		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, progress func()) error
+		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, progress func()) error
 		setCert(cert []byte, key []byte)
 		send(method string, apiCall string, body string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
@@ -363,24 +364,26 @@ func (kc *kc) Api() string {
 }
 
 func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string, string, string, error) {
-	if !strings.HasPrefix(src, "file:/") &&
-		!strings.HasPrefix(src, "pod:/") &&
-		!strings.HasPrefix(dst, "file:/") &&
-		!strings.HasPrefix(dst, "pod:/") {
+	src = strings.Trim(src, " ")
+	dst = strings.Trim(dst, " ")
+	logger.Debug("src=" + src + " dst=" + dst)
+	if (!strings.HasPrefix(src, "file:/") && !strings.HasPrefix(src, "pod:/")) ||
+		(!strings.HasPrefix(dst, "file:/") && !strings.HasPrefix(dst, "pod:/")) {
 		return false, "", "", "", "", "", errors.New("source and or destiny does not follow 'file:/' 'pod:/' pattern")
 	}
 	if (strings.HasPrefix(src, "file:/") && strings.HasPrefix(dst, "file:/")) ||
 		(strings.HasPrefix(src, "pod:/") && strings.HasPrefix(dst, "pod:/")) {
-		return false, "", "", "", "", "", errors.New("source and destiny cannot be both 'file:/' or 'pod:/'")
+		return false, "", "", "", "", "", errors.New("source and destiny cannot be both 'file:/' or both 'pod:/'")
 	}
 	sending := strings.HasPrefix(src, "file:/")
 	localFile, podFile, namespace, pod, container := "", "", "", "", ""
 	local := src
-	remote := dst[5:]
+	remote := dst
 	if !sending {
 		local = dst
-		remote = src[5:]
+		remote = src
 	}
+	remote = remote[5:]
 	localFile = local[6:]
 	logger.Debug("localfile=" + localFile)
 	if sending && !fsutil.IsFile(localFile) {
@@ -436,7 +439,7 @@ func (kc *kc) Copy(src string, dst string) error {
 		if err != nil {
 			return err
 		}
-		fileSizeReportedToDD = info.Size()
+		fileSizeReportedToDD = info.Size() //int64(4096) //info.Size()
 		queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s&command=%s%d", kc.ddPath, url.QueryEscape("of="+podFile), url.QueryEscape("bs=1"), url.QueryEscape("count="), fileSizeReportedToDD)
 	}
 	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("reqCmd", queryCmd))
@@ -507,7 +510,7 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 	if err != nil {
 		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
 	}
-	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
+	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes", info.Size())) {
 		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
 	}
 	if strings.Contains(stdErr.String(), "dd: error") {
@@ -517,29 +520,34 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 }
 
 func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64) error {
-	writer, err := wsConn.NextWriter(websocket.BinaryMessage)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-	_, err = writer.Write([]byte{0})
-	if err != nil {
-		return err
-	}
-	logger.Debug("sending file " + localFile)
+	logger.Sugar().Debug("sending file "+localFile+" with reported size ", fileSizeReportedToDD)
 	reader, err := os.Open(localFile)
 	if err != nil {
 		return err
 	}
 	defer reader.Close()
-	written, err := io.Copy(writer, reader)
-	if err != nil {
-		return err
+	b := make([]byte, 4096)
+	b[0] = 0
+	read := int64(0)
+	for {
+		r, err := io.ReadFull(reader, b[1:])
+		read += int64(r)
+		if err == io.EOF {
+			break
+		}
+		err = wsConn.WriteMessage(websocket.BinaryMessage, b[:r+1])
+		if err != nil {
+			logger.Debug("copyTo wsConn.WriteMessage " + err.Error())
+			return err
+		}
+		if err == io.ErrUnexpectedEOF {
+			break
+		}
 	}
-	if written != fileSizeReportedToDD {
-		return fmt.Errorf("reported file size to dd %d different from copy %d", fileSizeReportedToDD, written)
+	logger.Sugar().Debug("read=", read)
+	if read != fileSizeReportedToDD {
+		return fmt.Errorf("number of bytes sent to dd is less than expected")
 	}
-	writer.Close()
 	var stdErr strings.Builder
 	for {
 		_, m, e := wsConn.ReadMessage()
@@ -556,7 +564,7 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	if err != nil {
 		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
 	}
-	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes copied", info.Size())) {
+	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes", info.Size())) {
 		return fmt.Errorf("%s file size = %d. different from dd stderr\nif trying to copy to a directory add '/' to the end of pod destination\n%s", localFile, info.Size(), stdErr.String())
 	}
 	return nil
