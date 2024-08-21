@@ -50,9 +50,9 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--tgz` a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)
 
-`--xgvk` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"
+`--xgvk` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
 
-`--xns` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.*,kube.*"
+`--xns` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.\*,kube.\*"
 
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:
