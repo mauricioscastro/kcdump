@@ -114,7 +114,7 @@ func main() {
 	pflag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
 	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
 	pflag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit (default false)")
-	pflag.BoolVar(&gvk, "gvk", false, "print (filtered or not) group version kind with format 'gv,k' and exit (default false)")
+	pflag.BoolVar(&gvk, "gvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
 	pflag.BoolVar(&splitns, "splitns", false, "split namespaced items into directories with their namespace name (default false)")
 	pflag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside (default false)")
 	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.*,kube.*"`)

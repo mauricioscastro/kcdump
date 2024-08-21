@@ -28,7 +28,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--getlogs` get pod's logs? (default false)
 
-`--gvk` print (filtered or not) group version kind with format 'gv,k' and exit (default false)
+`--gvk` print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)
 
 `--gzip` gzip output (default true)
 
