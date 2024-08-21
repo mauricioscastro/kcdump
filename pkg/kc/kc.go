@@ -54,26 +54,28 @@ type (
 		SetCert(cert tls.Certificate) Kc
 		SetCluster(cluster string) Kc
 		Get(apiCall string, headers ...map[string]string) (string, error)
-		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
 
 		// regular k8s apply for a given manifest over zero or more namespaces.
 		// if first namespace item is "*" will apply to all namespaces.
 		// if manifest document(s) has '.metadata.namespace' other namespaces are ignored
-		ApplyManifest(yamlManifest string, namespaces ...string) (string, error)
-		Apply(apiCall string, body string) (string, error)
+		Apply(yamlManifest string, namespaces ...string) (string, error)
+		apply(apiCall string, body string) (string, error)
 		applyModifier(apiUrl string, body string, not_used bool) (string, error)
-		CreateManifest(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error)
-		Create(apiCall string, body string, applyIfFound bool) (string, error)
+
+		Create(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error)
+		create(apiCall string, body string, applyIfFound bool) (string, error)
 
 		// regular k8s replace for a given manifest over zero or more namespaces.
 		// if first namespace item is "*" will replace in all namespaces.
 		// if manifest document(s) has '.metadata.namespace' other namespaces are ignored
-		ReplaceManifest(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error)
-		Replace(apiCall string, body string, applyIfNotFound bool) (string, error)
-		DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
-		Delete(apiCall string, ignoreNotFound bool) (string, error)
+		Replace(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error)
+		replace(apiCall string, body string, applyIfNotFound bool) (string, error)
+
+		Delete(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
+		delete(apiCall string, ignoreNotFound bool) (string, error)
 		deleteModifier(apiUrl string, not_used string, ignoreNotFound bool) (string, error)
 
+		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
 		// target format = namespace/pod/container. if container is omitted the first is used.
 		// pod name can be a prefix in such case first found pod name with that suffix from the
 		// replica list is used. returns stdout + stderr
@@ -697,11 +699,11 @@ func (kc *kc) Get(apiCall string, headers ...map[string]string) (string, error) 
 	return kc.resp, kc.err
 }
 
-func (kc *kc) Apply(apiCall string, body string) (string, error) {
+func (kc *kc) apply(apiCall string, body string) (string, error) {
 	return kc.applyModifier(apiCall, body, false)
 }
 
-func (kc *kc) ApplyManifest(yamlManifest string, namespaces ...string) (string, error) {
+func (kc *kc) Apply(yamlManifest string, namespaces ...string) (string, error) {
 	return kc.modify(kc.applyModifier, yamlManifest, false, false, namespaces...)
 }
 
@@ -710,7 +712,7 @@ func (kc *kc) applyModifier(apiUrl string, body string, not_used bool) (string, 
 	return kc.send(http.MethodPatch, apiUrl, body)
 }
 
-func (kc *kc) Create(apiCall string, body string, applyIfFound bool) (string, error) {
+func (kc *kc) create(apiCall string, body string, applyIfFound bool) (string, error) {
 	logger.Debug("create", zap.String("apiCall", apiCall))
 	if applyIfFound {
 		// need to re-add the name to the url if it comes from modifier
@@ -729,15 +731,15 @@ func (kc *kc) Create(apiCall string, body string, applyIfFound bool) (string, er
 	return kc.send(http.MethodPost, apiCall, body)
 }
 
-func (kc *kc) CreateManifest(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error) {
-	return kc.modify(kc.Create, yamlManifest, applyIfFound, true, namespaces...)
+func (kc *kc) Create(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error) {
+	return kc.modify(kc.create, yamlManifest, applyIfFound, true, namespaces...)
 }
 
-func (kc *kc) ReplaceManifest(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error) {
-	return kc.modify(kc.Replace, yamlManifest, applyIfNotFound, false, namespaces...)
+func (kc *kc) Replace(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error) {
+	return kc.modify(kc.replace, yamlManifest, applyIfNotFound, false, namespaces...)
 }
 
-func (kc *kc) Replace(apiCall string, body string, applyIfNotFound bool) (string, error) {
+func (kc *kc) replace(apiCall string, body string, applyIfNotFound bool) (string, error) {
 	logger.Debug("replace", zap.String("apiCall", apiCall))
 	if applyIfNotFound {
 		_, e := kc.Get(apiCall)
@@ -749,11 +751,11 @@ func (kc *kc) Replace(apiCall string, body string, applyIfNotFound bool) (string
 	return kc.send(http.MethodPut, apiCall, body)
 }
 
-func (kc *kc) Delete(apiCall string, ignoreNotFound bool) (string, error) {
+func (kc *kc) delete(apiCall string, ignoreNotFound bool) (string, error) {
 	return kc.deleteModifier(apiCall, "", ignoreNotFound)
 }
 
-func (kc *kc) DeleteManifest(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
+func (kc *kc) Delete(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error) {
 	return kc.modify(kc.deleteModifier, yamlManifest, ignoreNotFound, false, namespaces...)
 }
 
