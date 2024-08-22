@@ -76,8 +76,9 @@ type (
 		deleteModifier(apiUrl string, not_used string, ignoreNotFound bool) (string, error)
 
 		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
+
 		// target format = namespace/pod/container. if container is omitted the first is used.
-		// pod name can be a prefix in such case first found pod name with that suffix from the
+		// pod name can be a prefix in such case first found pod name with that prefix from the
 		// replica list is used. returns stdout + stderr
 		Exec(target string, cmd []string) (string, error)
 
@@ -200,7 +201,17 @@ func NewKcWithConfigContext(config string, context string) Kc {
 			logger.Error("reading config from stdin also failed.", zap.Error(err))
 			return nil
 		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				logger.Error("reading home info", zap.Error(err))
+				return newKc()
+			}
 			kcfg = stdin
+			logger.Debug("config read from stdin. will write to default file path")
+			if err := fsutil.WriteTextFile(filepath.FromSlash(home+"/.kube/config"), string(kcfg)); err != nil {
+				logger.Error("error cashing stdin config to default file", zap.Error(err))
+				return nil
+			}
 		}
 	}
 	kubeCfg := string(kcfg)

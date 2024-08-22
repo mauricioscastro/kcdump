@@ -166,6 +166,7 @@ func (kc *kc) Dump(path string,
 	dumpDir = strings.Replace(dumpDir, ":", ".", -1)
 	dumpDir = strings.Replace(dumpDir, ".", "_", -1)
 	path = path + "/" + dumpDir
+	fsutil.Mkdirp(path)
 	fsutil.Clean(filepath.FromSlash(path))
 	// also remove possible old files from different options scenarios
 	os.Remove(path + ".tar.gz")

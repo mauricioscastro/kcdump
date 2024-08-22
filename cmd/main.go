@@ -113,7 +113,7 @@ func main() {
 
 	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (default false)")
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
-	pflag.BoolVar(&tgz, "tgz", false, "a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
+	pflag.BoolVar(&tgz, "tgz", false, "a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
 	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
 	pflag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit (default false)")
 	pflag.BoolVar(&gvk, "gvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
@@ -132,8 +132,8 @@ func main() {
 	pflag.StringToIntVar(&syncChunkMap, "sync-chunk-map", syncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size")
 	pflag.StringToIntVar(&asyncChunkMap, "async-chunk-map", asyncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers")
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
-	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used")
-	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
+	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used")
+	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)

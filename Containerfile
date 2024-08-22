@@ -21,7 +21,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM registry.access.redhat.com/ubi8/ubi-minimal
-COPY --from=builder /workspace/manager /kcdump
-RUN sed -ie 's;root:/root;root:/;g' /etc/passwd
-ENTRYPOINT ["/kcdump"]
+# FROM registry.access.redhat.com/ubi8/ubi-minimal
+# COPY --from=builder /workspace/manager /bin/kcdump
+# RUN sed -ie 's;root:/root;root:/;g' /etc/passwd
+FROM registry.access.redhat.com/ubi9-minimal
+COPY --from=builder /workspace/manager /bin/kcdump
+RUN adduser kcdump -u 1000
+WORKDIR /home/kcdump
+USER 1000:1000
+ENTRYPOINT ["/bin/kcdump"]
