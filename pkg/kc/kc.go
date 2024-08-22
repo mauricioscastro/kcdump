@@ -57,7 +57,7 @@ type (
 
 		// regular k8s apply for a given manifest over zero or more namespaces.
 		// if first namespace item is "*" will apply to all namespaces.
-		// if manifest document(s) has '.metadata.namespace' other namespaces are ignored
+		// if manifest document(s) has '.metadata.namespace' namespaces parameter is ignored
 		Apply(yamlManifest string, namespaces ...string) (string, error)
 		apply(apiCall string, body string) (string, error)
 		applyModifier(apiUrl string, body string, not_used bool) (string, error)
@@ -67,7 +67,7 @@ type (
 
 		// regular k8s replace for a given manifest over zero or more namespaces.
 		// if first namespace item is "*" will replace in all namespaces.
-		// if manifest document(s) has '.metadata.namespace' other namespaces are ignored
+		// if manifest document(s) has '.metadata.namespace' namespaces parameter is ignored
 		Replace(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error)
 		replace(apiCall string, body string, applyIfNotFound bool) (string, error)
 
@@ -94,7 +94,7 @@ type (
 		Copy(src string, dst string) error
 
 		// 'dd' utility for copy operation if not in container path. default is "dd"
-		// as in (...)/exec?container=dumpdb&command=dd(...)&stdout=true&stderr=true&stdin=true"
+		// as in (...)/exec?container=db&command=dd(...)&stdout=true&stderr=true&stdin=true"
 		SetDDpath(ddAbsolutePath string) Kc
 		SetGetParams(queryParams map[string]string) Kc
 		SetGetParam(name string, value string) Kc
@@ -110,7 +110,7 @@ type (
 		Ns() (string, error)
 		NsNames() ([]string, error)
 		ApiResources() (string, error)
-		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, progress func()) error
+		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, filenamePrefix string, progress func()) error
 		setCert(cert []byte, key []byte)
 		send(method string, apiCall string, body string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)

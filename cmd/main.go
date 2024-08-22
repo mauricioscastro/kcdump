@@ -58,6 +58,7 @@ var (
 	defaultChunkSize int
 	config           string
 	copyToPod        string
+	filenamePrefix   string
 )
 
 func init() {
@@ -132,6 +133,7 @@ func main() {
 	pflag.StringToIntVar(&asyncChunkMap, "async-chunk-map", asyncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers")
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used")
+	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)
@@ -203,7 +205,7 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	if e := kc.Dump(targetDir, xns, xgvk, syncChunkMap, asyncChunkMap, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, copyToPod, nil); e != nil {
+	if e := kc.Dump(targetDir, xns, xgvk, syncChunkMap, asyncChunkMap, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, copyToPod, filenamePrefix, nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}
@@ -229,6 +231,7 @@ func optionsFromViper() error {
 	context = viper.GetString("context")
 	logLevel = viper.GetString("loglevel")
 	copyToPod = viper.GetString("copy-to-pod")
+	filenamePrefix = viper.GetString("filename-prefix")
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
 	if syncChunkMap, err = getStringMapInt(viper.Get("sync-chunk-map")); err != nil {

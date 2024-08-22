@@ -10,7 +10,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 ```
 
 ### Options
-`--async-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers (default [events.v1=100,events.events.k8s.io/v1=100])
+`--async-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers (default [events.events.k8s.io/v1=100,events.v1=100])
 
 `--async-workers` number of group version kind to process in parallel (default 8)
 
@@ -23,6 +23,8 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 `--default-chunk-size` number of list items to retrieve until finished for all async workers (default 25)
 
 `--escapejson` escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \t \n ... (default true)
+
+`--filename-prefix` if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]
 
 `--format` output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "json_lines")
 
@@ -44,7 +46,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--splitns` split namespaced items into directories with their namespace name (default false)
 
-`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1])
+`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
 
 `--targetdir` target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "USER_HOME/.kube/kcdump")
 

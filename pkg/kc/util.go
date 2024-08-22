@@ -144,6 +144,7 @@ func (kc *kc) Dump(path string,
 	chunkSize int,
 	escapeEncodedJson bool,
 	copyToPod string,
+	filenamePrefix string,
 	progress func()) error {
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
 		return fmt.Errorf("unknown format")
@@ -230,18 +231,18 @@ func (kc *kc) Dump(path string,
 		return err
 	}
 	// get version info
-	if getVersion(kc, path, format, gz); err != nil {
+	if err = getVersion(kc, path, format, gz); err != nil {
 		return err
 	}
 	size := ""
 	if tgz {
-		if size, err = tgzAndPrune(kc, path, prune, copyToPod); err != nil {
+		if size, err = tgzAndPrune(kc, path, prune, copyToPod, filenamePrefix); err != nil {
 			return err
 		}
 	}
 	// create big fat file
 	if !splitgv {
-		if size, err = joinAll(kc, path, dumpDir, format, gzBigFile, nologs, copyToPod); err != nil {
+		if size, err = joinAll(kc, path, dumpDir, format, gzBigFile, nologs, copyToPod, filenamePrefix); err != nil {
 			return err
 		}
 	}
@@ -266,7 +267,7 @@ func (kc *kc) Dump(path string,
 	return nil
 }
 
-func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bool, copyToPod string) (string, error) {
+func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bool, copyToPod string, filenamePrefix string) (string, error) {
 	bigFileName := dumpDir
 	if format == YAML {
 		bigFileName = bigFileName + ".yaml"
@@ -313,6 +314,13 @@ func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bo
 	if err != nil {
 		return "", err
 	}
+	if filenamePrefix != "" {
+		newpath := filepath.Dir(bigFilePath) + "/" + filenamePrefix + filepath.Base(bigFilePath)
+		if err := fsutil.Move(bigFilePath, newpath); err != nil {
+			return "", err
+		}
+		bigFilePath = newpath
+	}
 	if copyToPod != "" {
 		logger.Info("copying " + "file:/" + bigFilePath + " to pod:/" + copyToPod)
 		if err = kc.Copy("file:/"+bigFilePath, "pod:/"+copyToPod); err != nil {
@@ -322,7 +330,7 @@ func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bo
 	return sz, nil
 }
 
-func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string) (string, error) {
+func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string, filenamePrefix string) (string, error) {
 	tgzpath := path[:len(path)-1] + ".tar"
 	if err := archive(path, tgzpath); err != nil {
 		logger.Error("tape archiving error", zap.Error(err))
@@ -334,13 +342,21 @@ func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string) (string, err
 	if prune {
 		os.RemoveAll(path)
 	}
-	sz, err := fsutil.Size(tgzpath + ".gz")
+	fname := tgzpath + ".gz"
+	sz, err := fsutil.Size(fname)
 	if err != nil {
 		return "", err
 	}
+	if filenamePrefix != "" {
+		newpath := filepath.Dir(fname) + "/" + filenamePrefix + filepath.Base(fname)
+		if err := fsutil.Move(fname, newpath); err != nil {
+			return "", err
+		}
+		fname = newpath
+	}
 	if copyToPod != "" {
-		logger.Info("copying " + "file:/" + tgzpath + ".gz" + " to pod:/" + copyToPod)
-		if err = kc.Copy("file:/"+tgzpath+".gz", "pod:/"+copyToPod); err != nil {
+		logger.Info("copying " + "file:/" + fname + " to pod:/" + copyToPod)
+		if err = kc.Copy("file:/"+fname, "pod:/"+copyToPod); err != nil {
 			return "", err
 		}
 	}
