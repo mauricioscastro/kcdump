@@ -10,7 +10,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 ```
 
 ### Options
-`--async-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers (default [events.events.k8s.io/v1=100,events.v1=100])
+`--async-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers (default [events.v1=100,events.events.k8s.io/v1=100])
 
 `--async-workers` number of group version kind to process in parallel (default 8)
 
@@ -18,7 +18,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--context` kube config context to use (default ".current-context")
 
-`--copy-to-pod` if the result of the dump is a file. a gziped json lines or a tar gzipped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used
+`--copy-to-pod` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used
 
 `--default-chunk-size` number of list items to retrieve until finished for all async workers (default 25)
 
@@ -28,7 +28,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--format` output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "json_lines")
 
-`--getlogs` get pod's logs? (default false)
+`--getlogs` get pod's logs (will tail 1000)? (default false)
 
 `--gvk` print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)
 
@@ -46,11 +46,11 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--splitns` split namespaced items into directories with their namespace name (default false)
 
-`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
+`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1])
 
 `--targetdir` target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "USER_HOME/.kube/kcdump")
 
-`--tgz` a gzipped tar file is created at targetDir level with its contents. will turn off gzip option (default false)
+`--tgz` a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)
 
 `--xgvk` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
 
