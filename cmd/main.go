@@ -24,6 +24,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/coreybutler/go-fsutil"
 	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
@@ -158,7 +159,18 @@ func main() {
 
 func dump() int {
 	log.SetLoggerLevel(logLevel)
-	kc := Kc.NewKcWithConfigContext(kubeconfig, context)
+	ll := os.Getenv("LOGGER_LEVEL")
+	if ll != "" {
+		log.SetLoggerLevel(ll)
+	}
+	var kc Kc.Kc = nil
+	if fsutil.Exists(Kc.TokenPath) &&
+		os.Getenv("KUBERNETES_SERVICE_HOST") != "" &&
+		os.Getenv("KUBERNETES_SERVICE_PORT_HTTPS") != "" { // running in cluster
+		kc = Kc.NewKc()
+	} else { // running solo
+		kc = Kc.NewKcWithConfigContext(kubeconfig, context)
+	}
 	if kc == nil {
 		fmt.Fprintf(os.Stderr, "unable to start k8s client from config file '%s' and context '%s'\n", kubeconfig, context)
 		os.Exit(-1)
@@ -240,6 +252,7 @@ func optionsFromViper() error {
 	if asyncChunkMap, err = getStringMapInt(viper.Get("async-chunk-map")); err != nil {
 		return err
 	}
+	logger.Sugar().Debug("targetDir=", targetDir, " copyToPod=", copyToPod, " filenamePrefix="+filenamePrefix)
 	return err
 }
 

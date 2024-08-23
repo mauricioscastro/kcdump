@@ -66,6 +66,9 @@ Those are the default options, similar to just calling `> kcdump` . With this, a
 ### Run the container version
 ```bash
 > podman run --rm --name kcdump quay.io/hcreport/kcdump -h
+> podman run --rm --name kcdump -v /tmp:/tmp/kcdump -i \
+  quay.io/hcreport/kcdump \
+  --loglevel=info --targetdir=/tmp/kcdump < ~/.kube/config
 ```
 or build it locally:
 ```bash

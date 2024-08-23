@@ -441,6 +441,7 @@ func (kc *kc) Copy(src string, dst string) error {
 	sending, localFile, podFile, namespace, pod, container, err := getCopyParams(kc, src, dst)
 	if err != nil {
 		kc.err = err
+		logger.Error(err.Error())
 		return err
 	}
 	stdin := false
@@ -450,6 +451,8 @@ func (kc *kc) Copy(src string, dst string) error {
 		stdin = true
 		info, err := os.Stat(localFile)
 		if err != nil {
+			kc.err = err
+			logger.Error(err.Error())
 			return err
 		}
 		fileSizeReportedToDD = info.Size()
@@ -458,6 +461,7 @@ func (kc *kc) Copy(src string, dst string) error {
 	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("reqCmd", queryCmd))
 	wsConn, resp, err := getWsConn(kc, namespace, pod, container, queryCmd, stdin)
 	if err != nil {
+		kc.err = err
 		logger.Error("copy dial ws conn:", zap.Error(err))
 		return err
 	}
