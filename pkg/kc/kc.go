@@ -412,7 +412,7 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 	container = container_split[0]
 	if len(container_split) == 1 {
 		if !sending {
-			return false, "", "", "", "", "", errors.New("absent pod source file in pod:/" + remote)
+			return false, "", "", "", "", "", errors.New("getCopyParams: absent pod source file in pod:/" + remote)
 		}
 		logger.Info("no directory specified, copying to /tmp")
 		podFile = "/tmp/" + filepath.Base(localFile)
@@ -420,7 +420,7 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 		podFile = container_split[1]
 		if strings.HasSuffix(podFile, "/") {
 			if !sending {
-				return false, "", "", "", "", "", errors.New("absent pod source file in pod:/" + remote)
+				return false, "", "", "", "", "", errors.New("getCopyParams: absent pod source file in pod:/" + remote)
 			}
 			podFile = podFile + filepath.Base(localFile)
 		}
@@ -432,7 +432,7 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
 	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " _pod=" + pod + " container=" + _container)
 	if _pod == "" || _container == "" {
-		return false, "", "", "", "", "", fmt.Errorf("not found pod=%s container=%s", pod, container)
+		return false, "", "", "", "", "", fmt.Errorf("getCopyParams: not found namespace=%s pod=%s container=%s", namespace, pod, container)
 	}
 	return sending, localFile, podFile, namespace, _pod, _container, nil
 }
