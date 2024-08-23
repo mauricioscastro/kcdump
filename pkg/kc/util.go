@@ -711,7 +711,7 @@ func writeLogs(kc Kc, path string, apis string, baseName string, yq yjq.EvalFunc
 		containerName := _p[1]
 		ns := _p[2]
 		fileName := podName + "." + containerName + ".log"
-		qp := map[string]string{"container": containerName}
+		qp := map[string]string{"container": containerName, "tailLines": "1000"}
 		logApi := fmt.Sprintf("%s%s/namespaces/%s/pods/%s/log", baseName, gv, ns, podName)
 		if !splitns {
 			fileName = ns + "." + fileName
