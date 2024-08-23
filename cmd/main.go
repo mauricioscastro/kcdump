@@ -112,7 +112,7 @@ func main() {
 	// // fmt.Println(apis)
 	// os.Exit(0)
 
-	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs (will tail 1000)? (default false)")
+	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (will tail 1000) (default false)")
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
 	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
@@ -210,10 +210,6 @@ func dump() int {
 		if e != nil {
 			return 6
 		}
-		if ns {
-			fmt.Println()
-		}
-		// fmt.Println("groupVersion,kind")
 		fmt.Println(g)
 		return 0
 	}

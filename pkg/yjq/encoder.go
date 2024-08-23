@@ -17,8 +17,6 @@ import (
 // A Postgres DB. THE ORIGINAL CODE IS HERE:
 // https://github.com/itchyny/gojq/blob/main/encoder.go
 
-// var escapeEncodedString = false
-
 // Marshal returns the jq-flavored JSON encoding of v.
 //
 // This method accepts only limited types (nil, bool, int, float64, *big.Int,
