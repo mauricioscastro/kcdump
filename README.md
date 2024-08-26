@@ -42,7 +42,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--prune` prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)
 
-`--splitgv` split groupVersion in separate files. when false will force splitns=false. only -format 'yaml' or 'json_lines' accepted. ignores -tgz. a big file is created with everything inside (default false)
+`--splitgv` split groupVersion in separate files. when false will force splitns=false. when false only -format 'yaml' or 'json_lines' accepted. when false ignores -tgz. when false a big file is created with everything inside. (default false)
 
 `--splitns` split namespaced items into directories with their namespace name (default false)
 
