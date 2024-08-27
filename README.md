@@ -28,8 +28,6 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--format` output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "json_lines")
 
-`--getlogs` get pod's logs (will tail 1000)? (default false)
-
 `--gvk` print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)
 
 `--gzip` gzip output (default true)
@@ -42,11 +40,13 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--prune` prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)
 
-`--splitgv` split groupVersion in separate files. when false will force splitns=false. when false only -format 'yaml' or 'json_lines' accepted. when false ignores -tgz. when false a big file is created with everything inside. (default false)
+`--splitgv` split groupVersion in separate files. when false: will force splitns=false, will only accepts --format 'yaml' or 'json_lines', ignores -tgz and a big file is created with everything inside (default false)
 
 `--splitns` split namespaced items into directories with their namespace name (default false)
 
-`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1])
+`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
+
+`--tail-lines` number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)
 
 `--targetdir` target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "USER_HOME/.kube/kcdump")
 
@@ -55,11 +55,10 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 `--xgvk` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
 
 `--xns` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.\*,kube.\*"
-
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:
 ```bash
-> kcdump --splitgv=false --format=json_lines --getlogs=false --gzip=true --escapeJson=true
+> kcdump --splitgv=false --format=json_lines --tail-lines=0 --gzip=true --escapeJson=true
 ```
 Those are the default options, similar to just calling `> kcdump` . With this, a big gziped json file is created. This big json is later loaded by the [dumpdb](./dumpdb/) container for manipulation with Postgres SQL queries.
 

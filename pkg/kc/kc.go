@@ -24,12 +24,6 @@ import (
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 )
 
-// cmd exec in pod:
-// -XPOST  -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: oc/4.11.0 (linux/amd64) kubernetes/262ac9c" 'https://192.168.49.2:8443/api/v1/namespaces/default/pods/dumpdb-866cfc54f4-s9szl/exec?command=date&container=dumpdb&stderr=true&stdout=true'
-//
-// cp to pod:
-// -XPOST  -H "X-Stream-Protocol-Version: v4.channel.k8s.io" -H "X-Stream-Protocol-Version: v3.channel.k8s.io" -H "X-Stream-Protocol-Version: v2.channel.k8s.io" -H "X-Stream-Protocol-Version: channel.k8s.io" -H "User-Agent: oc/4.11.0 (linux/amd64) kubernetes/262ac9c" 'https://192.168.49.2:8443/api/v1/namespaces/default/pods/dumpdb-866cfc54f4-s9szl/exec?command=tar&command=-xmf&command=-&command=-C&command=%2Ftmp&container=dumpdb&stderr=true&stdin=true&stdout=true'
-
 const (
 	Json                     = "json"
 	Yaml                     = "yaml"
@@ -111,7 +105,7 @@ type (
 		Ns() (string, error)
 		NsNames() ([]string, error)
 		ApiResources() (string, error)
-		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, nologs bool, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, filenamePrefix string, progress func()) error
+		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, filenamePrefix string, tailLines int, progress func()) error
 		setCert(cert []byte, key []byte)
 		send(method string, apiCall string, body string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)

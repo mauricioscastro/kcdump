@@ -40,7 +40,6 @@ var (
 	gzip             bool
 	tgz              bool
 	prune            bool
-	getlogs          bool
 	ns               bool
 	splitns          bool
 	splitgv          bool
@@ -60,6 +59,7 @@ var (
 	config           string
 	copyToPod        string
 	filenamePrefix   string
+	tailLines        int
 )
 
 func init() {
@@ -112,14 +112,13 @@ func main() {
 	// // fmt.Println(apis)
 	// os.Exit(0)
 
-	pflag.BoolVar(&getlogs, "getlogs", false, "get pod's logs? (will tail 1000) (default false)")
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
 	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
 	pflag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit (default false)")
 	pflag.BoolVar(&gvk, "gvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
 	pflag.BoolVar(&splitns, "splitns", false, "split namespaced items into directories with their namespace name (default false)")
-	pflag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false will force splitns=false. when false only -format 'yaml' or 'json_lines' accepted. when false ignores -tgz. when false a big file is created with everything inside (default false)")
+	pflag.BoolVar(&splitgv, "splitgv", false, "split groupVersion in separate files. when false: will force splitns=false, will only accepts --format 'yaml' or 'json_lines', ignores -tgz and a big file is created with everything inside (default false)")
 	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.*,kube.*"`)
 	pflag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	pflag.StringVar(&targetDir, "targetdir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
@@ -135,6 +134,7 @@ func main() {
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used")
 	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
+	pflag.IntVar(&tailLines, "tail-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)
@@ -213,7 +213,25 @@ func dump() int {
 		fmt.Println(g)
 		return 0
 	}
-	if e := kc.Dump(targetDir, xns, xgvk, syncChunkMap, asyncChunkMap, !getlogs, gzip, tgz, prune, splitns, splitgv, outputfmt, asyncWorkers, defaultChunkSize, escapeJson, copyToPod, filenamePrefix, nil); e != nil {
+	if e := kc.Dump(
+		targetDir,
+		xns,
+		xgvk,
+		syncChunkMap,
+		asyncChunkMap,
+		gzip,
+		tgz,
+		prune,
+		splitns,
+		splitgv,
+		outputfmt,
+		asyncWorkers,
+		defaultChunkSize,
+		escapeJson,
+		copyToPod,
+		filenamePrefix,
+		tailLines,
+		nil); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}
@@ -225,7 +243,6 @@ func optionsFromViper() error {
 	gzip = viper.GetBool("gzip")
 	tgz = viper.InConfig("tgz")
 	prune = viper.GetBool("prune")
-	getlogs = viper.GetBool("getlogs")
 	ns = viper.GetBool("ns")
 	splitns = viper.GetBool("splitns")
 	splitgv = viper.GetBool("splitgv")
@@ -242,6 +259,7 @@ func optionsFromViper() error {
 	filenamePrefix = viper.GetString("filename-prefix")
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
+	tailLines = viper.GetInt("tail-lines")
 	if syncChunkMap, err = getStringMapInt(viper.Get("sync-chunk-map")); err != nil {
 		return err
 	}

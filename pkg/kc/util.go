@@ -133,7 +133,6 @@ func (kc *kc) Dump(path string,
 	gvkExclusionList []string,
 	syncChunkMap map[string]int,
 	asyncChunkMap map[string]int,
-	nologs bool,
 	gz bool,
 	tgz bool,
 	prune bool,
@@ -145,6 +144,7 @@ func (kc *kc) Dump(path string,
 	escapeEncodedJson bool,
 	copyToPod string,
 	filenamePrefix string,
+	tailLines int,
 	progress func()) error {
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
 		return fmt.Errorf("unknown format")
@@ -162,6 +162,7 @@ func (kc *kc) Dump(path string,
 			format = JSON // trick the file writer and put the whole list in one line, or else, do not extract items.
 		}
 	}
+	nologs := tailLines == 0
 	dumpDir := strings.Replace(kc.cluster, "https://", "", -1)
 	dumpDir = strings.Replace(dumpDir, ":", ".", -1)
 	dumpDir = strings.Replace(dumpDir, ".", "_", -1)
@@ -203,7 +204,7 @@ func (kc *kc) Dump(path string,
 		if bigSizedReplyChunkSize, isBig := syncChunkMap[name+"."+gv]; isBig {
 			chunkSize = bigSizedReplyChunkSize
 			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
-			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, progress)
+			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 			logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
 			apiList = slices.Delete(apiList, i, i+1)
 		}
@@ -223,7 +224,7 @@ func (kc *kc) Dump(path string,
 		wg.BlockAdd()
 		go func() {
 			defer wg.Done()
-			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, progress)
+			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 		}()
 	}
 	wg.Wait()
@@ -463,7 +464,7 @@ func getApiAvailableListQueryValues(kcVer string, listEntry string) (string, str
 	return name, gv, namespaced, baseName
 }
 
-func writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, progress func()) error {
+func writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error {
 	if progress != nil {
 		defer progress()
 	}
@@ -522,7 +523,7 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 			}
 			if !namespaced || !splitns {
 				if !nologs && name == "pods" && gv == kc.Version() {
-					if err = writeLogs(kc, path+"log/", apiResources, baseName, yq, gv, gz, splitns); err != nil {
+					if err = writeLogs(kc, path+"log/", apiResources, baseName, yq, gv, gz, splitns, tailLines); err != nil {
 						return writeResourceListLog("write logs "+logLine, err)
 					}
 				}
@@ -545,7 +546,7 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 						return writeResourceListLog("apiByNs "+logLine, err)
 					}
 					if !nologs && name == "pods" && gv == kc.Version() {
-						if err = writeLogs(kc, nsPath+"log/", apiByNs, baseName, yq, gv, gz, splitns); err != nil {
+						if err = writeLogs(kc, nsPath+"log/", apiByNs, baseName, yq, gv, gz, splitns, tailLines); err != nil {
 							return writeResourceListLog("write logs "+logLine, err)
 						}
 					}
@@ -698,7 +699,7 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 	return cleanApiResource, nil
 }
 
-func writeLogs(kc Kc, path string, apis string, baseName string, yq yjq.EvalFunc, gv string, gz bool, splitns bool) error {
+func writeLogs(kc Kc, path string, apis string, baseName string, yq yjq.EvalFunc, gv string, gz bool, splitns bool, tailLines int) error {
 	podContainerList, err := yjq.Eval2List(yq, `.items[] | .metadata.name + ";" + .spec.containers[].name + ";" + .metadata.namespace`, apis)
 	if err != nil {
 		// return writeResourceListLog("podContainerList "+logLine, err)
@@ -711,7 +712,10 @@ func writeLogs(kc Kc, path string, apis string, baseName string, yq yjq.EvalFunc
 		containerName := _p[1]
 		ns := _p[2]
 		fileName := podName + "." + containerName + ".log"
-		qp := map[string]string{"container": containerName, "tailLines": "1000"}
+		qp := map[string]string{"container": containerName}
+		if tailLines > 0 {
+			qp["tailLines"] = fmt.Sprintf("%d", tailLines)
+		}
 		logApi := fmt.Sprintf("%s%s/namespaces/%s/pods/%s/log", baseName, gv, ns, podName)
 		if !splitns {
 			fileName = ns + "." + fileName
