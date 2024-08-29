@@ -39,6 +39,7 @@ var (
 	cache                  sync.Map
 	overrideAcceptWithJson map[string]string
 	overrideAcceptWithYaml map[string]string
+	kubeConfigFromStdin    []byte
 )
 
 type (
@@ -144,6 +145,7 @@ func init() {
 	cache = sync.Map{}
 	overrideAcceptWithJson = map[string]string{"Accept": "application/" + Json}
 	overrideAcceptWithYaml = map[string]string{"Accept": "application/" + Yaml}
+	kubeConfigFromStdin = make([]byte, 0)
 }
 
 func SetLogLevel(level string) {
@@ -189,24 +191,16 @@ func NewKcWithConfigContext(config string, context string) Kc {
 	logger.Debug("context " + context)
 	kcfg, err := os.ReadFile(config)
 	if err != nil {
-		logger.Error("reading config file. will try reading from stdin...", zap.Error(err))
-		stdin, stdinerr := io.ReadAll(os.Stdin)
-		if stdinerr != nil {
-			logger.Error("reading config from stdin also failed.", zap.Error(err))
-			return nil
-		} else {
-			home, err := os.UserHomeDir()
+		if len(kubeConfigFromStdin) == 0 {
+			logger.Error("reading config file. will try reading from stdin...", zap.Error(err))
+			kubeConfigFromStdin, err = io.ReadAll(os.Stdin)
 			if err != nil {
-				logger.Error("reading home info", zap.Error(err))
-				return newKc()
-			}
-			kcfg = stdin
-			logger.Debug("config read from stdin. will write to default file path")
-			if err := fsutil.WriteTextFile(filepath.FromSlash(home+"/.kube/config"), string(kcfg)); err != nil {
-				logger.Error("error cashing stdin config to default file", zap.Error(err))
+				logger.Error("reading config from stdin also failed.", zap.Error(err))
 				return nil
 			}
 		}
+		logger.Debug("using last config read from stdin")
+		kcfg = kubeConfigFromStdin
 	}
 	kubeCfg := string(kcfg)
 	cluster, err := yjq.YqEval(fmt.Sprintf(queryContextForCluster, context), kubeCfg)
