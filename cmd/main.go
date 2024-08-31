@@ -110,7 +110,7 @@ func main() {
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'")
 	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the file name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
-	pflag.IntVar(&tailLines, "tail-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
+	pflag.IntVar(&tailLines, "tail-log-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)
@@ -235,7 +235,7 @@ func optionsFromViper() error {
 	filenamePrefix = viper.GetString("filename-prefix")
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
-	tailLines = viper.GetInt("tail-lines")
+	tailLines = viper.GetInt("tail-log-lines")
 	if syncChunkMap, err = getStringMapInt(viper.Get("sync-chunk-map")); err != nil {
 		return err
 	}
