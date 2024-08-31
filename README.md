@@ -46,7 +46,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
 
-`--tail-lines` number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)
+`--tail-log-lines` number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)
 
 `--targetdir` target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir. (default "USER_HOME/.kube/kcdump")
 
