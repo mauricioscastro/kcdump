@@ -73,7 +73,7 @@ type (
 		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
 
 		// target format = namespace/pod/container. if container is omitted the first is used.
-		// pod name can be a prefix in such case first found pod name with that prefix from the
+		// pod name can be a substring of the target pod in such case first found pod name with that prefix from the
 		// replica list is used. returns stdout + stderr
 		Exec(target string, cmd []string) (string, error)
 
@@ -83,10 +83,10 @@ type (
 		// as file name and written into that path assumed to be a directory.
 		// copy operations needs the targeted container to have the 'dd' utility in its path. if
 		// not in path you can set its absolute path location with SetDDpath().
-		// in 'pod:/[...]' the pod name can be a prefix for which 1st found pod is used if
-		// more than one replica exists. container is optional and when this happens the 1st found
-		// is used. if pod file destination is not specified while copying to pod '/tmp'
-		// directory will be used as target.
+		// in 'pod:/[...]' the pod name can be a substring of the target pod for which 1st found
+		// pod is used if more than one replica exists. container is optional and when this
+		// happens the 1st found is used. if pod file destination is not specified while copying
+		// to pod '/tmp' directory will be used as target.
 		Copy(src string, dst string) error
 
 		// 'dd' utility for copy operation if not in container path. default is "dd"
@@ -651,7 +651,7 @@ func getPodTarget(target string) (string, string, string, error) {
 	return namespace, pod, container + path, nil
 }
 
-func getPodAndContainer(kc *kc, ns string, podPrefix string, container string) (string, string) {
+func getPodAndContainer(kc *kc, ns string, podSubstring string, container string) (string, string) {
 	pods, e := kc.Get("/api/"+kc.Version()+"/namespaces/"+ns+"/pods", overrideAcceptWithYaml)
 	if e != nil {
 		logger.Error("", zap.Error(e))
@@ -665,7 +665,7 @@ func getPodAndContainer(kc *kc, ns string, podPrefix string, container string) (
 	pod, _container := "", ""
 	for _, p := range list {
 		item := strings.Split(p, ",")
-		if strings.HasPrefix(item[0], podPrefix) {
+		if strings.Contains(item[0], podSubstring) {
 			pod = item[0]
 			_container = item[1]
 			break

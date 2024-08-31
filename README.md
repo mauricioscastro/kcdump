@@ -18,7 +18,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--context` kube config context to use (default ".current-context")
 
-`--copy-to-pod` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a prefix for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used
+`--copy-to-pod` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used
 
 `--default-chunk-size` number of list items to retrieve until finished for all async workers (default 25)
 
