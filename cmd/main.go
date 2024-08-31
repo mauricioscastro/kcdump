@@ -88,30 +88,6 @@ func init() {
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g'
 
 func main() {
-	// log.SetLoggerLevel("debug")
-	// _kc := kc.NewKc()
-
-	// // exec, err := _kc.Exec("default/dumpdb", strings.Split("ls -la /tmp", " "))
-	// err := _kc.Copy("pod:/default/dumpdb/dumpdb:/tmp/192_168_49_2_8443.json.gz", "file://tmp/")
-	// // fmt.Println(exec)
-	// fmt.Println(err)
-	// os.Exit(0)
-
-	// body, _ := io.ReadAll(os.Stdin)
-	// apis, err := _kc.CreateManifest(string(body), true)
-	// // apis, _ := _kc.Accept(kc.Yaml).Get("/apis/hcreport.csa.latam.redhat.com/v1/configs/config-sample")
-	// // apis, _ := _kc.Accept(kc.Yaml).Get("/apis/apps/v1")
-	// // apis, err := _kc.GetNameFromGvk("storage.k8s.io/v1", "StorageClass")
-	// // apis, err := _kc.NsNames()
-	// // apis, err := _kc.Accept(kc.Yaml).Apply("/api/v1/namespaces/echo/services/echo", string(body))
-	// fmt.Println(apis)
-	// fmt.Println(err)
-	// // apis, err = _kc.GetNameFromGvk("v1", "Service")
-	// // fmt.Println(apis)
-	// // apis, _ = _kc.Accept(kc.Yaml).Get("/api/" + _kc.Version())
-	// // fmt.Println(apis)
-	// os.Exit(0)
-
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
 	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
@@ -133,7 +109,7 @@ func main() {
 	pflag.StringToIntVar(&asyncChunkMap, "async-chunk-map", asyncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers")
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'")
-	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
+	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the file name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
 	pflag.IntVar(&tailLines, "tail-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
 	pflag.Parse()
 

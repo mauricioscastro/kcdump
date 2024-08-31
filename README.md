@@ -24,7 +24,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--escapejson` escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \t \n ... (default true)
 
-`--filename-prefix` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the files name. which will result in prefix'cluster_info_port'[.gz or .tgz]
+`--filename-prefix` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the file name. which will result in prefix'cluster_info_port'[.gz or .tgz]
 
 `--format` output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "json_lines")
 
@@ -58,7 +58,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:
 ```bash
-> kcdump --splitgv=false --format=json_lines --tail-lines=0 --gzip=true --escapeJson=true
+> kcdump --splitgv=false --format=json_lines --tail-lines=0 --gzip=true --escapejson=true
 ```
 Those are the default options, similar to just calling `> kcdump` . With this, a big gziped json file is created. This big json is later loaded by the [dumpdb](./dumpdb/) container for manipulation with Postgres SQL queries.
 
