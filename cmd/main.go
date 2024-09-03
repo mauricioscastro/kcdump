@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 
@@ -33,7 +35,9 @@ import (
 )
 
 var (
-	logger = log.Logger().Named("kcdump.main")
+	logger     = log.Logger().Named("kcdump.main")
+	totalGvk   = 0
+	gvkCounter atomic.Int32
 
 	// cli dump options
 	home             string
@@ -60,6 +64,7 @@ var (
 	copyToPod        string
 	filenamePrefix   string
 	tailLines        int
+	showProgress     bool
 )
 
 func init() {
@@ -102,7 +107,7 @@ func main() {
 	pflag.BoolVar(&escapeJson, "escapejson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \\t \\n ...")
 	pflag.StringVar(&kubeconfig, "kubeconfig", filepath.FromSlash(home+"/.kube/config"), "kubeconfig file or read from stdin.")
 	pflag.StringVar(&context, "context", Kc.CurrentContext, "kube config context to use")
-	pflag.StringVar(&logLevel, "loglevel", "error", "use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
+	pflag.StringVar(&logLevel, "loglevel", "error", "goes to stderr. use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal'")
 	pflag.IntVar(&asyncWorkers, "async-workers", 8, "number of group version kind to process in parallel")
 	pflag.IntVar(&defaultChunkSize, "default-chunk-size", 25, "number of list items to retrieve until finished for all async workers")
 	pflag.StringToIntVar(&syncChunkMap, "sync-chunk-map", syncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size")
@@ -111,6 +116,7 @@ func main() {
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'")
 	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the file name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
 	pflag.IntVar(&tailLines, "tail-log-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
+	pflag.BoolVar(&showProgress, "show-progress", true, "show percentage completed in stdout")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)
@@ -173,22 +179,32 @@ func dump() int {
 		fmt.Println(n)
 		return 0
 	}
+	gvkCounter.Store(0)
+	progress := func() {
+		fmt.Printf("PROGRESS %d%%\r", (gvkCounter.Add(1)*100)/int32(totalGvk))
+	}
+	if !showProgress {
+		progress = nil
+	} else {
+		fmt.Print("PROGRESS 0%\r")
+	}
+	g, e := kc.ApiResources()
+	if e != nil {
+		return 4
+	}
+	g, e = Kc.FilterApiResources(g, xgvk, outputfmt)
+	if e != nil {
+		return 5
+	}
+	g, e = yjq.YqEval(`with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | [.name + "," + .groupVersion + "," + .kind] | .[]`, g)
+	if e != nil {
+		return 6
+	}
 	if gvk {
-		g, e := kc.ApiResources()
-		if e != nil {
-			return 4
-		}
-		g, e = Kc.FilterApiResources(g, xgvk, outputfmt)
-		if e != nil {
-			return 5
-		}
-		g, e = yjq.YqEval(`with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | [.name + "," + .groupVersion + "," + .kind] | .[]`, g)
-		if e != nil {
-			return 6
-		}
 		fmt.Println(g)
 		return 0
 	}
+	totalGvk = len(strings.Split(g, "\n"))
 	if e := kc.Dump(
 		targetDir,
 		xns,
@@ -207,7 +223,7 @@ func dump() int {
 		copyToPod,
 		filenamePrefix,
 		tailLines,
-		nil); e != nil {
+		progress); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 9
 	}
@@ -236,6 +252,7 @@ func optionsFromViper() error {
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
 	tailLines = viper.GetInt("tail-log-lines")
+	showProgress = viper.GetBool("show-progress")
 	if syncChunkMap, err = getStringMapInt(viper.Get("sync-chunk-map")); err != nil {
 		return err
 	}

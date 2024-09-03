@@ -34,11 +34,13 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--kubeconfig` kubeconfig file or read from stdin. (default "USER_HOME/.kube/config")
 
-`--loglevel` use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "error")
+`--loglevel` goes to stderr. use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "error")
 
 `--ns` print (filtered or not) namespaces list and exit (default false)
 
 `--prune` prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)
+
+`--show-progress` show percentage completed in stdout (default true)
 
 `--splitgv` split groupVersion in separate files. when false: will force splitns=false, will only accepts --format 'yaml' or 'json_lines', ignores -tgz and a big file is created with everything inside (default false)
 
@@ -55,6 +57,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 `--xgvk` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
 
 `--xns` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.\*,kube.\*"
+
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:
 ```bash
