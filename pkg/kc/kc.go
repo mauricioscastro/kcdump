@@ -74,8 +74,8 @@ type (
 
 		// target format = namespace/pod/container. if container is omitted the first is used.
 		// pod name can be a substring of the target pod in such case first found pod name with that prefix from the
-		// replica list is used. returns stdout + stderr
-		Exec(target string, cmd []string) (string, error)
+		// replica list is used. returns stdout, stderr
+		Exec(target string, cmd []string) (string, string, error)
 
 		// src (source) and dst (destination) can be file:/absolute_path_to_local_file or
 		// pod:/namespace/pod/container:/absolute_path_to_file_in_container
@@ -576,14 +576,14 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	return nil
 }
 
-func (kc *kc) Exec(target string, cmd []string) (string, error) {
+func (kc *kc) Exec(target string, cmd []string) (string, string, error) {
 	namespace, pod, container, err := getPodTarget(target)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
 	if _pod == "" || _container == "" {
-		return "", fmt.Errorf("not found pod %s container %s", pod, container)
+		return "", "", fmt.Errorf("not found pod %s container %s", pod, container)
 	}
 	queryCmd := ""
 	for _, c := range cmd {
@@ -592,13 +592,13 @@ func (kc *kc) Exec(target string, cmd []string) (string, error) {
 	wsConn, resp, err := getWsConn(kc, namespace, _pod, _container, queryCmd, false)
 	if err != nil {
 		logger.Error("exec dial ws conn:", zap.Error(err))
-		return "", err
+		return "", "", err
 	}
 	defer wsConn.Close()
 	for k, v := range resp.Header {
 		logger.Debug("exec resp headers", zap.Strings(k, v))
 	}
-	var stdOutErr strings.Builder
+	var stdOut, stdErr strings.Builder
 	for {
 		_, m, e := wsConn.ReadMessage()
 		if e != nil {
@@ -608,9 +608,14 @@ func (kc *kc) Exec(target string, cmd []string) (string, error) {
 			}
 			break
 		}
-		stdOutErr.WriteString(string(m[1:]))
+		if m[0] == 1 {
+			stdOut.WriteString(string(m[1:]))
+		}
+		if m[0] == 2 {
+			stdErr.WriteString(string(m[1:]))
+		}
 	}
-	return stdOutErr.String(), nil
+	return stdOut.String(), stdErr.String(), nil
 }
 
 func getWsConn(kc *kc, namespace string, _pod string, _container string, queryCmd string, stdin bool) (*websocket.Conn, *http.Response, error) {
