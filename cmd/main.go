@@ -20,12 +20,15 @@ import (
 	// "flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 
 	"go.uber.org/zap"
 
+	"atomicgo.dev/cursor"
 	"github.com/coreybutler/go-fsutil"
 	Kc "github.com/mauricioscastro/kcdump/pkg/kc"
 	"github.com/mauricioscastro/kcdump/pkg/util/log"
@@ -88,6 +91,15 @@ func init() {
 		"events.v1":               100,
 		"events.events.k8s.io/v1": 100,
 	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-c
+		if showProgress {
+			cursor.Show()
+		}
+		os.Exit(-2)
+	}()
 }
 
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g'
@@ -140,6 +152,10 @@ func main() {
 }
 
 func dump() int {
+	if showProgress {
+		cursor.Hide()
+		defer cursor.Show()
+	}
 	log.SetLoggerLevel(logLevel)
 	ll := os.Getenv("LOGGER_LEVEL")
 	if ll != "" {
