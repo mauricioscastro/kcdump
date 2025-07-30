@@ -119,7 +119,11 @@ func Eval2Int(evalFunc EvalFunc, expr string, input string, param ...any) (int, 
 
 func Eval2List(evalFunc EvalFunc, expr string, input string, param ...any) ([]string, error) {
 	l, e := evalFunc(expr, input, param...)
-	return strings.Split(l, "\n"), e
+	list := strings.Split(l, "\n")
+	if len(list) > 0 && len(list[len(list)-1]) == 0 {
+		list = list[:len(list)-1]
+	}
+	return list, e
 }
 
 func JqEval(expr string, input string, param ...any) (string, error) {

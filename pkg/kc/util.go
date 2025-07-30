@@ -200,6 +200,9 @@ func (kc *kc) Dump(path string,
 	dumpWorkerErrors.Store(make([]error, 0))
 	// retrieve big guys first serially
 	for i, le := range apiList {
+		if len(le) == 0 {
+			continue
+		}
 		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
 		if bigSizedReplyChunkSize, isBig := syncChunkMap[name+"."+gv]; isBig {
 			chunkSize = bigSizedReplyChunkSize
@@ -212,6 +215,9 @@ func (kc *kc) Dump(path string,
 	// retrieve everything else in parallel
 	wg := waitgroup.NewWaitGroup(poolSize)
 	for _, le := range apiList {
+		if len(le) == 0 {
+			continue
+		}
 		name, gv, namespaced, baseName := getApiAvailableListQueryValues(kc.Version(), le)
 		if name == "namespaces" && gv == kc.Version() {
 			continue
