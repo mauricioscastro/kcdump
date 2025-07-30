@@ -233,7 +233,7 @@ func (kc *kc) Dump(path string,
 		return err
 	}
 	// get version info
-	if err = getVersion(kc, path, format, gz); err != nil {
+	if err = getVersion(kc, path, format, gz, filenamePrefix); err != nil {
 		return err
 	}
 	size := ""
@@ -425,8 +425,8 @@ func getGroupVersionKind(kc *kc, path string, gvkExclusionList []string, gz bool
 	return apis, nil
 }
 
-func getVersion(kc *kc, path string, format int, gz bool) error {
-	// /version coes not accept yaml
+func getVersion(kc *kc, path string, format int, gz bool, filenamePrefix string) error {
+	// /version does not accept yaml
 	version, err := kc.Get("/version", overrideAcceptWithJson)
 	if err != nil {
 		return err
@@ -440,6 +440,9 @@ func getVersion(kc *kc, path string, format int, gz bool) error {
 		yq = yjq.YqEval
 	}
 	if version, err = yq(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	if version, err = yq(`. += {"dumpPrefix": "%s"}`, version, filenamePrefix); err != nil {
 		return err
 	}
 	// version can't be split since it is not presented as a ResourceList

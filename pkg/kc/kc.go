@@ -28,7 +28,7 @@ const (
 	Json                     = "json"
 	Yaml                     = "yaml"
 	TokenPath                = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	CurrentContext           = ".current-context"
+	CurrentContext           = "current-context"
 	queryContextForCluster   = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .clusters[] | select(.name == $ctx.cluster) | .cluster.server // ""`
 	queryContextForUserAuth  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .users[] | select(.name == $ctx.user) | .user.%s`
 	createModifierExtraParam = "?modifier_removed_name="
@@ -89,7 +89,13 @@ type (
 		// to pod '/tmp' directory will be used as target.
 		Copy(src string, dst string) error
 
-		// 'dd' utility for copy operation if not in container path. default is "dd"
+		// target format = namespace/pod/container.
+		// if container is omitted logs from all containers are retrieved.
+		// tailLines = -1 get all.
+		// tailLines > 0 get that number of log lines
+		Log(target string, tailLines int) (string, error)
+
+		// 'dd' utility for copy operation if not in container's path. default is "dd"
 		// as in (...)/exec?container=db&command=dd(...)&stdout=true&stderr=true&stdin=true"
 		SetDDpath(ddAbsolutePath string) Kc
 		SetGetParams(queryParams map[string]string) Kc
@@ -184,10 +190,6 @@ func NewKcWithConfig(config string) Kc {
 }
 
 func NewKcWithConfigContext(config string, context string) Kc {
-	kc := newKc()
-	if context != CurrentContext {
-		context = `"` + context + `"`
-	}
 	logger.Debug("context " + context)
 	kcfg, err := os.ReadFile(config)
 	if err != nil {
@@ -203,6 +205,14 @@ func NewKcWithConfigContext(config string, context string) Kc {
 		kcfg = kubeConfigFromStdin
 	}
 	kubeCfg := string(kcfg)
+	if context == CurrentContext {
+		context, err = yjq.YqEval(fmt.Sprintf(`.%s // ""`, CurrentContext), kubeCfg)
+		if err != nil || context == "" {
+			logger.Error("reading context info", zap.Error(err))
+			return nil
+		}
+	}
+	context = `"` + context + `"`
 	cluster, err := yjq.YqEval(fmt.Sprintf(queryContextForCluster, context), kubeCfg)
 	logger.Debug("query for server " + fmt.Sprintf(queryContextForCluster, context))
 	if err != nil {
@@ -214,6 +224,7 @@ func NewKcWithConfigContext(config string, context string) Kc {
 		return nil
 	}
 	logger.Debug("", zap.String("context cluster", cluster))
+	kc := newKc()
 	kc.SetCluster(cluster)
 	token, err := yjq.YqEval(fmt.Sprintf(queryContextForUserAuth, context, `token // ""`), kubeCfg)
 	if err != nil {
@@ -513,7 +524,7 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 	}
 	info, err := os.Stat(localFile)
 	if err != nil {
-		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
+		return fmt.Errorf("file stat copyFrom. localfile=%s", localFile)
 	}
 	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes", info.Size())) {
 		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
@@ -568,12 +579,66 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	}
 	info, err := os.Stat(localFile)
 	if err != nil {
-		return fmt.Errorf("file stat copyFrom. localfile=%s" + localFile)
+		return fmt.Errorf("file stat copyFrom. localfile=%s", localFile)
 	}
 	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes", info.Size())) {
 		return fmt.Errorf("%s file size = %d. different from dd stderr\nif trying to copy to a directory add '/' to the end of pod destination\n%s", localFile, info.Size(), stdErr.String())
 	}
 	return nil
+}
+
+func (kc *kc) Log(target string, tailLines int) (string, error) {
+	if tailLines == 0 {
+		return "", nil
+	}
+	namespace, pod, container, err := getPodTarget(target)
+	if err != nil {
+		return "", err
+	}
+	containerList := []string{}
+	if container == "" {
+		podYaml, err := kc.Get("/api/"+kc.Version()+"/namespaces/"+namespace+"/pods/"+pod, overrideAcceptWithYaml)
+		if err != nil {
+			logger.Error("", zap.Error(err))
+			return "", err
+		}
+		containerList, err = yjq.Eval2List(yjq.YqEval, ".spec.containers[].name", podYaml)
+		if err != nil {
+			logger.Error("", zap.Error(err))
+			return "", err
+		}
+	} else {
+		containerList = append(containerList, container)
+	}
+	var log strings.Builder
+	for _, container := range containerList {
+		qp := map[string]string{"container": container}
+		if tailLines > 0 {
+			qp["tailLines"] = fmt.Sprintf("%d", tailLines)
+		}
+		logApi := fmt.Sprintf("/api/%s/namespaces/%s/pods/%s/log", kc.Version(), namespace, pod)
+		logger.Debug("will get the los for pod " + pod + " container " + container)
+		l, err := kc.
+			SetResponseTransformer(apiIgnoreNotFoundResponseTransformer).
+			SetGetParams(qp).
+			Get(logApi)
+		if err != nil {
+			if !(strings.Contains(err.Error(), "container") &&
+				strings.Contains(err.Error(), "terminated")) {
+				logger.Error("", zap.Error(err))
+			}
+			continue
+		}
+		if len(l) == 0 {
+			continue
+		}
+		if len(containerList) > 1 {
+			log.WriteString("===> " + container + " <===\n" + l)
+		} else {
+			log.WriteString(l)
+		}
+	}
+	return log.String(), nil
 }
 
 func (kc *kc) Exec(target string, cmd []string) (string, string, error) {
@@ -645,7 +710,7 @@ func getPodTarget(target string) (string, string, string, error) {
 	logger.Debug("getPodTarget", zap.String("_target", _target), zap.String("path", path))
 	targetList := strings.Split(_target, "/")
 	if len(targetList) < 2 {
-		return "", "", "", fmt.Errorf("wrong targe format %s. should be 'namespace/pod[/container]'", target)
+		return "", "", "", fmt.Errorf("wrong target format %s. should be 'namespace/pod[/container]'", target)
 	}
 	namespace := targetList[0]
 	pod := targetList[1]

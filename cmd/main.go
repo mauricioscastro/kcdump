@@ -91,7 +91,7 @@ func init() {
 		"events.v1":               100,
 		"events.events.k8s.io/v1": 100,
 	}
-	c := make(chan os.Signal, 1)
+	c := make(chan os.Signal, 2)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-c
