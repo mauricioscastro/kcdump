@@ -2,8 +2,11 @@ gzip: false
 loglevel: info
 #async-chunk-map: {}
 #sync-chunk-map: {}
-copy-to-pod: default/dumpdb
+copy-to-pod: //dumpdb
 format: yaml
-splitgv: true
-splitns: true
+split-group-version-kind: true
+split-namespaces: true
 tail-lines: -1
+exclude-group-version-kind: []
+exclude-namespaces: []
+

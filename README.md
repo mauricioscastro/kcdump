@@ -16,9 +16,9 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `-f,--config` kcdump config file. command line options have precedence (default "USER_HOME/.kube/kcdump/kcdump.yaml")
 
-`--context` kube config context to use (default ".current-context")
+`--context` kube config context to use (default "current-context")
 
-`--copy-to-pod` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'
+`--copy-to-pod` if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'. if namespace is omitted and running from inside a cluster '/var/run/secrets/kubernetes.io/serviceaccount/namespace' is used
 
 `--default-chunk-size` number of list items to retrieve until finished for all async workers (default 25)
 
@@ -40,13 +40,13 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--prune` prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)
 
-`--show-progress` show percentage completed in stdout (default true)
+`--show-progress` show percentage completed in stdout
 
-`--splitgv` split groupVersion in separate files. when false: will force splitns=false, will only accepts --format 'yaml' or 'json_lines', ignores -tgz and a big file is created with everything inside (default false)
+`--sgv,--split-group-version-kind` split groupVersion in separate files. when false: will force splitns=false, will only accepts --format 'yaml' or 'json_lines', ignores -tgz and a big file is created with everything inside (default false)
 
-`--splitns` split namespaced items into directories with their namespace name (default false)
+`--sns,--split-namespaces` split namespaced items into directories with their namespace name (default false)
 
-`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
+`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1])
 
 `--tail-log-lines` number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)
 
@@ -54,9 +54,9 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--tgz` a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)
 
-`--xgvk` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
+`--xgvk,--exclude-group-version-kind` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
 
-`--xns` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.\*,kube.\*"
+`--xns,--exclude-namespace` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.\*,kube.\*"
 
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:

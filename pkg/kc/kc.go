@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,8 +75,9 @@ type (
 		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
 
 		// target format = namespace/pod/container. if container is omitted the first is used.
-		// pod name can be a substring of the target pod in such case first found pod name with that prefix from the
-		// replica list is used. returns stdout, stderr
+		// if namespace is omitted, as in "/echo-/" it assumes it's running inside the cluster and will try '/var/run/secrets/kubernetes.io/serviceaccount/namespace
+		// pod name can be a substring of the target pod in such case first found pod name containing such substring in the replica list is used
+		// returns stdout, stderr
 		Exec(target string, cmd []string) (string, string, error)
 
 		// src (source) and dst (destination) can be file:/absolute_path_to_local_file or
@@ -85,11 +88,13 @@ type (
 		// not in path you can set its absolute path location with SetDDpath().
 		// in 'pod:/[...]' the pod name can be a substring of the target pod for which 1st found
 		// pod is used if more than one replica exists. container is optional and when this
-		// happens the 1st found is used. if pod file destination is not specified while copying
-		// to pod '/tmp' directory will be used as target.
+		// happens the 1st found is used. if pod file destination is not specified while copying to pod '/tmp' directory will be used as target.
+		// if namespace is omitted, as in "pod://echo-/" it assumes it's running inside the cluster and will try '/var/run/secrets/kubernetes.io/serviceaccount/namespace
 		Copy(src string, dst string) error
 
-		// target format = namespace/pod/container.
+		// target format = namespace/pod/container
+		// if namespace is omitted, as in "/echo-/" it assumes it's running inside the cluster and will try '/var/run/secrets/kubernetes.io/serviceaccount/namespace
+		// pod name can be a substring of the target pod in such case first found pod name containing such substring in the replica list is used
 		// if container is omitted logs from all containers are retrieved.
 		// tailLines = -1 get all.
 		// tailLines > 0 get that number of log lines
@@ -428,10 +433,17 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 	if !sending && strings.HasSuffix(localFile, "/") {
 		localFile = localFile + filepath.Base(podFile)
 	}
-	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
-	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " _pod=" + pod + " container=" + _container)
-	if _pod == "" || _container == "" {
+	pod_container := getPodAndContainerMap(kc, namespace, pod, container)
+	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " pod_container=" + fmt.Sprint(pod_container))
+	pod_container_k := slices.Collect(maps.Keys(pod_container))
+	_pod, _container := "", ""
+	if len(pod_container_k) == 0 {
 		return false, "", "", "", "", "", fmt.Errorf("getCopyParams: not found namespace=%s pod=%s container=%s", namespace, pod, container)
+	} else {
+		_pod, _container = pod_container_k[0], pod_container[pod_container_k[0]][0]
+	}
+	if len(pod_container_k) > 1 || len(pod_container[_pod]) > 1 {
+		logger.Info("defaulting to pod " + _pod + " container " + _container)
 	}
 	return sending, localFile, podFile, namespace, _pod, _container, nil
 }
@@ -462,6 +474,7 @@ func (kc *kc) Copy(src string, dst string) error {
 	if err != nil {
 		kc.err = err
 		logger.Error("copy dial ws conn:", zap.Error(err))
+		logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
 		return err
 	}
 	defer wsConn.Close()
@@ -595,47 +608,42 @@ func (kc *kc) Log(target string, tailLines int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	containerList := []string{}
-	if container == "" {
-		podYaml, err := kc.Get("/api/"+kc.Version()+"/namespaces/"+namespace+"/pods/"+pod, overrideAcceptWithYaml)
-		if err != nil {
-			logger.Error("", zap.Error(err))
-			return "", err
-		}
-		containerList, err = yjq.Eval2List(yjq.YqEval, ".spec.containers[].name", podYaml)
-		if err != nil {
-			logger.Error("", zap.Error(err))
-			return "", err
-		}
-	} else {
-		containerList = append(containerList, container)
+	pod_container := getPodAndContainerMap(kc, namespace, pod, container)
+	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " pod_container=" + fmt.Sprint(pod_container))
+	pod_container_k := slices.Collect(maps.Keys(pod_container))
+	if len(pod_container_k) == 0 {
+		return "", fmt.Errorf("getCopyParams: not found namespace=%s pod=%s container=%s", namespace, pod, container)
 	}
 	var log strings.Builder
-	for _, container := range containerList {
-		qp := map[string]string{"container": container}
-		if tailLines > 0 {
-			qp["tailLines"] = fmt.Sprintf("%d", tailLines)
-		}
-		logApi := fmt.Sprintf("/api/%s/namespaces/%s/pods/%s/log", kc.Version(), namespace, pod)
-		logger.Debug("will get the los for pod " + pod + " container " + container)
-		l, err := kc.
-			SetResponseTransformer(apiIgnoreNotFoundResponseTransformer).
-			SetGetParams(qp).
-			Get(logApi)
-		if err != nil {
-			if !(strings.Contains(err.Error(), "container") &&
-				strings.Contains(err.Error(), "terminated")) {
-				logger.Error("", zap.Error(err))
+	for pod, container_list := range pod_container {
+		logger.Debug("Log", zap.String("pod", pod), zap.String("namespace", namespace))
+		for _, container := range container_list {
+			logger.Debug("Log", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
+			qp := map[string]string{"container": container}
+			if tailLines > 0 {
+				qp["tailLines"] = fmt.Sprintf("%d", tailLines)
 			}
-			continue
-		}
-		if len(l) == 0 {
-			continue
-		}
-		if len(containerList) > 1 {
-			log.WriteString("===> " + container + " <===\n" + l)
-		} else {
-			log.WriteString(l)
+			logApi := fmt.Sprintf("/api/%s/namespaces/%s/pods/%s/log", kc.Version(), namespace, pod)
+			logger.Debug("will get the logs for pod " + pod + " container " + container)
+			l, err := kc.
+				SetResponseTransformer(apiIgnoreNotFoundResponseTransformer).
+				SetGetParams(qp).
+				Get(logApi)
+			if err != nil {
+				if !(strings.Contains(err.Error(), "container") &&
+					strings.Contains(err.Error(), "terminated")) {
+					logger.Error("", zap.Error(err))
+				}
+				continue
+			}
+			if len(l) == 0 {
+				continue
+			}
+			if len(container_list) > 1 {
+				log.WriteString("===> " + namespace + "/" + pod + "/" + container + " <===\n" + l)
+			} else {
+				log.WriteString(l)
+			}
 		}
 	}
 	return log.String(), nil
@@ -646,9 +654,17 @@ func (kc *kc) Exec(target string, cmd []string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	_pod, _container := getPodAndContainer(kc, namespace, pod, container)
-	if _pod == "" || _container == "" {
-		return "", "", fmt.Errorf("not found pod %s container %s", pod, container)
+	pod_container := getPodAndContainerMap(kc, namespace, pod, container)
+	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " pod_container=" + fmt.Sprint(pod_container))
+	pod_container_k := slices.Collect(maps.Keys(pod_container))
+	_pod, _container := "", ""
+	if len(pod_container_k) == 0 {
+		return "", "", fmt.Errorf("getCopyParams: not found namespace=%s pod=%s container=%s", namespace, pod, container)
+	} else {
+		_pod, _container = pod_container_k[0], pod_container[pod_container_k[0]][0]
+	}
+	if len(pod_container_k) > 1 || len(pod_container[_pod]) > 1 {
+		logger.Info("defaulting to pod " + _pod + " container " + _container)
 	}
 	queryCmd := ""
 	for _, c := range cmd {
@@ -657,6 +673,7 @@ func (kc *kc) Exec(target string, cmd []string) (string, string, error) {
 	wsConn, resp, err := getWsConn(kc, namespace, _pod, _container, queryCmd, false)
 	if err != nil {
 		logger.Error("exec dial ws conn:", zap.Error(err))
+		logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
 		return "", "", err
 	}
 	defer wsConn.Close()
@@ -710,7 +727,15 @@ func getPodTarget(target string) (string, string, string, error) {
 	logger.Debug("getPodTarget", zap.String("_target", _target), zap.String("path", path))
 	targetList := strings.Split(_target, "/")
 	if len(targetList) < 2 {
-		return "", "", "", fmt.Errorf("wrong target format %s. should be 'namespace/pod[/container]'", target)
+		return "", "", "", fmt.Errorf("wrong target format %s. should be '[namespace]/pod[/container]'", target)
+	}
+	if len(targetList[0]) == 0 {
+		logger.Debug("getPodTarget with no namespace")
+		namespace, e := fsutil.ReadTextFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+		if e != nil {
+			return "", "", "", e
+		}
+		targetList[0] = namespace
 	}
 	namespace := targetList[0]
 	pod := targetList[1]
@@ -721,30 +746,29 @@ func getPodTarget(target string) (string, string, string, error) {
 	return namespace, pod, container + path, nil
 }
 
-func getPodAndContainer(kc *kc, ns string, podSubstring string, container string) (string, string) {
+func getPodAndContainerMap(kc *kc, ns string, podSubstring string, container string) map[string][]string {
+	pod_container := make(map[string][]string)
 	pods, e := kc.Get("/api/"+kc.Version()+"/namespaces/"+ns+"/pods", overrideAcceptWithYaml)
 	if e != nil {
 		logger.Error("", zap.Error(e))
-		return "", ""
+		return pod_container
 	}
-	list, e := yjq.Eval2List(yjq.YqEval, `.items[] | .metadata.name + "," + .spec.containers[0].name`, pods)
+	list, e := yjq.Eval2List(yjq.YqEval, `.items[] | .metadata.name + "," + ([.spec.containers[].name] | join(";"))`, pods)
 	if e != nil {
 		logger.Error("", zap.Error(e))
-		return "", ""
+		return pod_container
 	}
-	pod, _container := "", ""
 	for _, p := range list {
 		item := strings.Split(p, ",")
 		if strings.Contains(item[0], podSubstring) {
-			pod = item[0]
-			_container = item[1]
-			break
+			if container != "" {
+				pod_container[item[0]] = []string{container}
+			} else {
+				pod_container[item[0]] = strings.Split(item[1], ";")
+			}
 		}
 	}
-	if container != "" {
-		_container = container
-	}
-	return pod, _container
+	return pod_container
 }
 
 func (kc *kc) Get(apiCall string, headers ...map[string]string) (string, error) {
