@@ -481,6 +481,7 @@ func (kc *kc) Copy(src string, dst string) error {
 	for k, v := range resp.Header {
 		logger.Debug("copy resp headers", zap.Strings(k, v))
 	}
+	logger.Debug("Copy", zap.String("src", src), zap.String("dst", dst))
 	if sending {
 		return copyTo(wsConn, localFile, fileSizeReportedToDD)
 	}
