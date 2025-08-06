@@ -34,6 +34,7 @@ const (
 	queryContextForCluster   = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .clusters[] | select(.name == $ctx.cluster) | .cluster.server // ""`
 	queryContextForUserAuth  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .users[] | select(.name == $ctx.user) | .user.%s`
 	createModifierExtraParam = "?modifier_removed_name="
+	currentNamespace         = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 )
 
 var (
@@ -732,7 +733,7 @@ func getPodTarget(target string) (string, string, string, error) {
 	}
 	if len(targetList[0]) == 0 {
 		logger.Debug("getPodTarget with no namespace")
-		namespace, e := fsutil.ReadTextFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+		namespace, e := fsutil.ReadTextFile(currentNamespace)
 		if e != nil {
 			return "", "", "", e
 		}
@@ -882,6 +883,13 @@ func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound boo
 func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCreating bool, namespaces ...string) (string, error) {
 	if kc.readOnly {
 		return "", errors.New("trying to modify resources in read only mode")
+	}
+	if len(namespaces) == 0 {
+		ns, e := fsutil.ReadTextFile(currentNamespace)
+		if e != nil {
+			return "", e
+		}
+		namespaces = []string{ns}
 	}
 	var errList, respList strings.Builder
 	for docIndex := 0; ; docIndex++ {
