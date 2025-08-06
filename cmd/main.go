@@ -209,6 +209,7 @@ func dump() int {
 		}
 	}
 	if showProgress {
+		logger.Info("PROGRESS 0%")
 		fmt.Print("PROGRESS 0%\r")
 	}
 	g, e := kc.ApiResources()
