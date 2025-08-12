@@ -22,12 +22,6 @@ create or replace function jptxtone(target jsonb, path jsonpath, vars jsonb defa
     immutable strict parallel safe as
 'select replace(jsonb_path_query(target, path, vars, silent) #>> ''{}'', ''{}'', '''') limit 1';
 
-create or replace function jsonb_array_to_text_array(_js jsonb)
-    returns text[]
-    language sql
-    immutable strict parallel safe as
-'select array(select jsonb_array_elements_text(_js))';
-
 create or replace function clean_views()
     returns void
     language plpgsql as
@@ -97,15 +91,20 @@ begin
     --
     -- create basic api_resources and version views
     --
-    create materialized view if not exists api_resources as
-    select id                                                            cluster_id,
-           _ ->> 'name'                                                  api_name,
-           _ ->> 'groupVersion'                                          api_gv,
-           _ ->> 'kind'                                                  api_k,
-           _ ->> 'namespaced'                                            namespaced,
-           jsonb_array_to_text_array(jp(_, '$.shortNames')) short_names,
-           jsonb_array_to_text_array(jp(_, '$.verbs'))      verbs
-    from (select jp(_, '$.items[*]') _, id from cluster where api_name = 'apiresources');
+ 	create materialized view if not exists api_resources as
+ 	select 
+ 		c.id cluster_id, 
+ 		a.*
+		from cluster c, json_table (_, '$.items[*]' 
+ 		columns (
+ 			api_name text path '$.name',
+ 			api_gv text path '$.groupVersion',
+ 			api_k text path '$.kind',
+ 			namespaced bool path '$.namespaced',
+ 			short_names text[] path '$.shortNames' default '{}'::text[] on empty,
+ 			verbs text[] path '$.verbs' default '{}'::text[] on empty
+ 		)
+ 	) a where c.api_name = 'apiresources';
 
     create index if not exists apiresources_clnamegv on api_resources (cluster_id, api_name, api_gv);
     create index if not exists apiresources_k on api_resources (api_k);

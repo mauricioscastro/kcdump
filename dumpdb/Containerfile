@@ -1,21 +1,30 @@
-from registry.access.redhat.com/rhel9/postgresql-16
+from registry.access.redhat.com/ubi10/ubi:10.0-1754586730
 
 ENV PGDATA=/var/lib/pgsql/pgdata 
 ENV POSTGRESQL_USER=postgres 
 ENV POSTGRESQL_PASSWORD=postgres 
 ENV POSTGRESQL_DATABASE=postgres
+ENV PATH="$PATH:/usr/pgsql-17/bin"
 
-COPY dumpdb-init.sql /opt/app-root/src/
+RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
+    dnf install -y postgresql17-server
+
+COPY dumpdb-init.sql /var/lib/pgsql/
+
+USER postgres
+WORKDIR /var/lib/pgsql
 
 RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
     pg_ctl start -o "-h ''" && \
     psql -c "ALTER ROLE postgres WITH ENCRYPTED PASSWORD ''" && \
-    psql -f /opt/app-root/src/dumpdb-init.sql && \
+    psql -f dumpdb-init.sql && \
     pg_ctl stop && \
     sed -ie 's;host  *all  *all  *::1/128.*;host    all             all             0.0.0.0/0               trust;g' /var/lib/pgsql/pgdata/pg_hba.conf  && \
     echo "listen_addresses = '*'" >> /var/lib/pgsql/pgdata/postgresql.conf && \
     sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf && \
     mkdir /tmp/kcdump
 
-WORKDIR /var/lib/pgsql
+
+
+
 
