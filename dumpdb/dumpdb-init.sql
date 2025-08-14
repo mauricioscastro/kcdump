@@ -38,8 +38,8 @@ end;
 $$;
 
 create or replace function load_cluster_data(dir text)
-    returns void
-    language plpgsql as
+returns void
+language plpgsql as
 $$
 declare
     cdata record;
@@ -54,6 +54,7 @@ begin
         api_name text,
         api_gv   text,
         api_k    text,
+		api_id	 text,
         _        jsonb
     );
 
@@ -89,27 +90,83 @@ begin
     create index if not exists cluster_k on cluster (api_k);
 
     --
-    -- create basic api_resources and version views
+    -- create basic apiresources table and versions view
     --
- 	create materialized view if not exists api_resources as
- 	select 
- 		c.id cluster_id, 
- 		a.*
-		from cluster c, json_table (_, '$.items[*]' 
- 		columns (
- 			api_name text path '$.name',
- 			api_gv text path '$.groupVersion',
- 			api_k text path '$.kind',
- 			namespaced bool path '$.namespaced',
- 			short_names text[] path '$.shortNames' default '{}'::text[] on empty,
- 			verbs text[] path '$.verbs' default '{}'::text[] on empty
- 		)
- 	) a where c.api_name = 'apiresources';
+    drop table if exists apiresources;
+    create table apiresources as 
+        select 
+            c.id cluster_id, 
+            '' api_id,
+            a.*
+            from cluster c, json_table (_, '$.items[*]' 
+            columns (
+                api_name text path '$.name',
+                api_gv text path '$.groupVersion',
+                api_k text path '$.kind',
+                namespaced bool path '$.namespaced',
+                short_names text[] path '$.shortNames' default '{}'::text[] on empty,
+                verbs text[] path '$.verbs' default '{}'::text[] on empty
+            )
+        ) a where c.api_name = 'apiresources';
 
-    create index if not exists apiresources_clnamegv on api_resources (cluster_id, api_name, api_gv);
-    create index if not exists apiresources_k on api_resources (api_k);
+    update apiresources set api_id = lower(api_name) where api_gv not like '%.%' and api_name in 
+    ( 
+    select api_name from 
+        ( 
+        select count(api_name) t, api_name, api_id from apiresources where api_id = '' group by api_name, api_id
+        ) where t = 1
+    );
 
-    create materialized view if not exists version as
+    update apiresources set api_id = lower(api_name) where api_name in 
+    ( 
+    select api_name from 
+        ( 
+        select count(api_name) t, api_name, api_id from apiresources where api_id = '' group by api_name, api_id
+        ) where t = 1
+    );
+
+    update apiresources set api_id = lower(api_name) where api_gv not like '%.%' and api_name in 
+    ( 
+    select api_name from 
+        ( 
+        select count(api_name) t, api_name, api_id from apiresources where api_id = '' group by api_name, api_id
+        ) where t > 1
+    );
+
+    update apiresources set api_id = lower(api_name) || '_' || REGEXP_REPLACE(api_gv, '^.*\/', '') where api_name in 
+    (
+    select api_name from (
+        select count(api_name) t, api_name, api_grp from (
+            select api_id, api_name, REGEXP_REPLACE(api_gv, '\/.*$', '') api_grp from apiresources where api_id = ''
+            ) group by api_name, api_grp 
+        ) where t > 1
+    );
+
+    update apiresources set api_id = lower(api_name) || '_' || REGEXP_REPLACE(api_gv, '^([^.]+)\.([^.]+)\.?([^.]+)?.*\/.*$', '\1_\2') where (api_name, api_gv) in
+    (
+        select api_name, api_gv from (
+            select count(api_name) t, api_name, api_grp, api_gv from (
+                select api_id, api_name, REGEXP_REPLACE(api_gv, '^([^.]+)\.([^.]+)\.?([^.]+)?.*\/.*$', '\1_\2') api_grp, api_gv from apiresources where api_id = ''
+            ) group by api_name, api_grp, api_gv 
+        ) where t = 1
+    );
+
+    update apiresources set api_id = REGEXP_REPLACE(replace(api_gv, '.','_'), '\/.*$','') where api_id = '';
+
+    create index if not exists apiresources_clnamegv on apiresources (cluster_id, api_name, api_gv);
+    create index if not exists apiresources_k on apiresources (api_k);
+    create index if not exists apiresources_pk on apiresources (api_id);
+
+	update cluster c set api_id = a.api_id 
+	from apiresources a 
+	where c.api_name = a.api_name and c.api_gv = a.api_gv;
+
+	update cluster set api_id = 'apiresources' where api_name = 'apiresources' and api_gv = 'v1';
+	update cluster set api_id = 'versions' where api_name = 'versions' and api_gv = 'v1';
+
+	create index if not exists cluster_api_id on cluster (api_id);
+
+    create materialized view if not exists versions as
     select
         id                      cluster_id,
         _ ->> 'dumpDate'        dump_date,
@@ -128,36 +185,33 @@ begin
     -- create views for all api resources with at least one object found for all clusters
     --
     for apir in
-        select distinct
-            a.api_name, a.api_gv, a.namespaced, replace(replace(replace(a.api_gv, '-', '_'), '/', '_'),'.','_') gvname
-        from
-            api_resources a join cluster c on a.api_name = c.api_name and a.api_gv = c.api_gv
+        select a.api_id, a.namespaced from apiresources a join cluster c on a.api_id = c.api_id
     loop
         if apir.namespaced then
             execute format('
-            create materialized view if not exists %s_%s as
+            create materialized view if not exists %s as
             select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
                    jp(c._, ''$.items[*].metadata.name'')->>0 name,
                    jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
                    jp(c._, ''$.items[*]'') _
                    from cluster c
-            where c.api_name=''%s'' and c.api_gv=''%s'';
-            ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
-            execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
-            execute format ('create index if not exists %s_namens on %s_%s (name, namespace);', apir.api_name, apir.api_name, apir.gvname);
-            execute format ('create index if not exists %s_k on %s_%s (kind);', apir.api_name, apir.api_name, apir.gvname);
+            where c.api_id=''%s'';
+            ', apir.api_id, apir.api_id);
+            execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
+            execute format ('create index if not exists %s_namens on %s (name, namespace);',apir.api_id, apir.api_id);
+            execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
         else
             execute format('
-            create materialized view if not exists %s_%s as
+            create materialized view if not exists %s as
             select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
                    jp(c._, ''$.items[*].metadata.name'')->>0 name,
                    jp(c._, ''$.items[*]'') _
                    from cluster c
-            where c.api_name=''%s'' and c.api_gv=''%s'';
-            ', apir.api_name, apir.gvname, apir.api_name, apir.api_gv);
-            execute format ('create index if not exists %s_clapinamegv on %s_%s (cluster_id, api_name, gv);', apir.api_name, apir.api_name, apir.gvname);
-            execute format ('create index if not exists %s_name on %s_%s (name);', apir.api_name, apir.api_name, apir.gvname);
-            execute format ('create index if not exists %s_k on %s_%s (kind);', apir.api_name, apir.api_name, apir.gvname);
+            where c.api_id=''%s'';
+            ', apir.api_id, apir.api_id);
+            execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
+            execute format ('create index if not exists %s_name on %s (name);', apir.api_id, apir.api_id);
+            execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
         end if;
     end loop;
 end;
