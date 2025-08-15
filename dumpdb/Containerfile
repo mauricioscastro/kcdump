@@ -24,6 +24,8 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
     sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf && \
     mkdir /tmp/kcdump
 
+ENTRYPOINT ["postgres"]    
+
 
 
 
