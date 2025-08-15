@@ -185,20 +185,23 @@ func dump() int {
 	}
 	outputfmt, e := Kc.FormatCodeFromString(format)
 	if e != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 7
 	}
 	if ns {
 		n, e := kc.Ns()
 		if e != nil {
+			fmt.Fprintf(os.Stderr, "%s", e.Error())
 			return 1
 		}
 		n, e = Kc.FilterNS(n, xns, outputfmt, true)
 		if e != nil {
+			fmt.Fprintf(os.Stderr, "%s", e.Error())
 			return 2
 		}
 		n, e = yjq.YqEval("[.items[].metadata.name] | sort | .[]", n)
 		if e != nil {
+			fmt.Fprintf(os.Stderr, "%s", e.Error())
 			return 3
 		}
 		// fmt.Println("namespace")
@@ -219,6 +222,7 @@ func dump() int {
 	}
 	g, e := kc.ApiResources()
 	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 4
 	}
 	g, e = Kc.FilterApiResources(g, xgvk, outputfmt)
@@ -227,6 +231,7 @@ func dump() int {
 	}
 	g, e = yjq.YqEval(`with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | [.name + "," + .groupVersion + "," + .kind] | .[]`, g)
 	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 6
 	}
 	if gvk {
@@ -253,7 +258,7 @@ func dump() int {
 		filename,
 		tailLines,
 		progress); e != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 9
 	}
 	return 0

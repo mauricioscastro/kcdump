@@ -10,8 +10,6 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 ```
 
 ### Options
-`--async-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers (default [events.v1=100,events.events.k8s.io/v1=100])
-
 `--async-workers` number of group version kind to process in parallel (default 8)
 
 `-f,--config` kcdump config file. command line options have precedence (default "USER_HOME/.kube/kcdump/kcdump.yaml")
@@ -40,7 +38,7 @@ Cutting to the chase and leaving explanations for later. It will work like any o
 
 `--prune` prunes targetDir/name/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)
 
-`--sgv, --split-group-version-kind` split groupVersion in separate files. when false: will force --sns, --split-namespaces=false, only accepts --format 'yaml' or 'json_lines', ignores --tgz and a big file is created with everything inside (default false)
+`--sgv, --split-group-version-kind` split groupVersion in separate files. when false: will force --sns=false, --split-namespaces=false, only accepts --format 'yaml' or 'json_lines', ignores --tgz and a big file is created with everything inside (default false)
 
 `--show-progress` show percentage completed in stdout
 
