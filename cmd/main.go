@@ -65,7 +65,7 @@ var (
 	defaultChunkSize int
 	config           string
 	copyToPod        string
-	filenamePrefix   string
+	filename         string
 	tailLines        int
 	showProgress     bool
 )
@@ -102,18 +102,18 @@ func init() {
 	}()
 }
 
-// readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g'
+// readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g' | sed -e 's/--sgv/--sgv, --split-group-version-kind/g' -e 's/--sns/--sns, --split-namespaces/g' -e 's/--xgvk/--xgvk, --exclude-group-version-kind/g' -e 's/--xns/--xns, --exclude-namespace/g'
 
 func main() {
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
-	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/cluster_info_port/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
-	pflag.BoolVar(&ns, "ns", false, "print (filtered or not) namespaces list and exit (default false)")
-	pflag.BoolVar(&gvk, "gvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
+	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/name/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
+	pflag.BoolVar(&ns, "printns", false, "print (filtered or not) namespaces list and exit (default false)")
+	pflag.BoolVar(&gvk, "printgvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
 	pflag.BoolVar(&splitns, "sns", false, "split namespaced items into directories with their namespace name (default false)")
-	pflag.BoolVar(&splitgv, "sgv", false, "split groupVersion in separate files. when false: will force splitns=false, will only accepts --format 'yaml' or 'json_lines', ignores -tgz and a big file is created with everything inside (default false)")
-	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma -xns "open-.*,kube.*"`)
-	pflag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: -xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
+	pflag.BoolVar(&splitgv, "sgv", false, "split groupVersion in separate files. when false: will force --sns=false, only accepts --format 'yaml' or 'json_lines', ignores --tgz and a big file is created with everything inside (default false)")
+	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma --xns "open-.*,kube.*"`)
+	pflag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	pflag.StringVar(&targetDir, "targetdir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
 	pflag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
 	pflag.BoolVar(&escapeJson, "escapejson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \\t \\n ...")
@@ -126,17 +126,20 @@ func main() {
 	pflag.StringToIntVar(&asyncChunkMap, "async-chunk-map", asyncChunkMap, "a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers")
 	pflag.StringVarP(&config, "config", "f", filepath.FromSlash(home+"/.kube/kcdump/kcdump.yaml"), "kcdump config file. command line options have precedence")
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'. if namespace is omitted and running from inside a cluster '/var/run/secrets/kubernetes.io/serviceaccount/namespace' is used")
-	pflag.StringVar(&filenamePrefix, "filename-prefix", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, add this prefix to the file name. which will result in prefix'cluster_info_port'[.gz or .tgz]")
+	pflag.StringVar(&filename, "name", "", "if informed this will the name of the resulting directory, gziped or tar gziped file.")
 	pflag.IntVar(&tailLines, "tail-log-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
 	pflag.BoolVar(&showProgress, "show-progress", false, "show percentage completed in stdout")
 	pflag.Parse()
 
 	log.SetLoggerLevel(logLevel)
 
-	viper.RegisterAlias("xns", "exclude-namespace")
-	viper.RegisterAlias("xgvk", "exclude-group-version-kind")
-	viper.RegisterAlias("sns", "split-namespaces")
-	viper.RegisterAlias("sgv", "split-group-version-kind")
+	viper.SetEnvPrefix("KCD")
+	viper.AutomaticEnv()
+
+	viper.RegisterAlias("exclude-namespace", "xns")
+	viper.RegisterAlias("exclude-group-version-kind", "xgvk")
+	viper.RegisterAlias("split-namespaces", "sns")
+	viper.RegisterAlias("split-group-version-kind", "sgv")
 
 	viper.BindPFlags(pflag.CommandLine)
 	viper.SetConfigFile(config)
@@ -152,6 +155,8 @@ func main() {
 		logger.Error("reading options", zap.Error(err))
 		os.Exit(11)
 	}
+
+	logger.Info("options from viper", zap.Any("options", viper.AllSettings()))
 
 	os.Exit(dump())
 }
@@ -245,7 +250,7 @@ func dump() int {
 		defaultChunkSize,
 		escapeJson,
 		copyToPod,
-		filenamePrefix,
+		filename,
 		tailLines,
 		progress); e != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
@@ -259,10 +264,10 @@ func optionsFromViper() error {
 	gzip = viper.GetBool("gzip")
 	tgz = viper.GetBool("tgz")
 	prune = viper.GetBool("prune")
-	ns = viper.GetBool("ns")
-	splitns = viper.GetBool("splitns")
-	splitgv = viper.GetBool("splitgv")
-	gvk = viper.GetBool("gvk")
+	ns = viper.GetBool("printns")
+	splitns = viper.GetBool("sns")
+	splitgv = viper.GetBool("sgv")
+	gvk = viper.GetBool("printgvk")
 	xns = viper.GetStringSlice("xns")
 	xgvk = viper.GetStringSlice("xgvk")
 	targetDir = viper.GetString("targetdir")
@@ -272,7 +277,7 @@ func optionsFromViper() error {
 	context = viper.GetString("context")
 	logLevel = viper.GetString("loglevel")
 	copyToPod = viper.GetString("copy-to-pod")
-	filenamePrefix = viper.GetString("filename-prefix")
+	filename = viper.GetString("name")
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
 	tailLines = viper.GetInt("tail-log-lines")
@@ -283,7 +288,7 @@ func optionsFromViper() error {
 	if asyncChunkMap, err = getStringMapInt(viper.Get("async-chunk-map")); err != nil {
 		return err
 	}
-	logger.Sugar().Debug("targetDir=", targetDir, " copyToPod=", copyToPod, " filenamePrefix="+filenamePrefix)
+	logger.Sugar().Debug("targetDir=", targetDir, " copyToPod=", copyToPod, " name="+filename)
 	return err
 }
 

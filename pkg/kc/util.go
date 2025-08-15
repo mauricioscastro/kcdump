@@ -143,7 +143,7 @@ func (kc *kc) Dump(path string,
 	chunkSize int,
 	escapeEncodedJson bool,
 	copyToPod string,
-	filenamePrefix string,
+	filename string,
 	tailLines int,
 	progress func()) error {
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
@@ -166,6 +166,7 @@ func (kc *kc) Dump(path string,
 	dumpDir := strings.Replace(kc.cluster, "https://", "", -1)
 	dumpDir = strings.Replace(dumpDir, ":", ".", -1)
 	dumpDir = strings.Replace(dumpDir, ".", "_", -1)
+	targetDir := path
 	path = path + "/" + dumpDir
 	fsutil.Mkdirp(path)
 	fsutil.Clean(filepath.FromSlash(path))
@@ -239,18 +240,18 @@ func (kc *kc) Dump(path string,
 		return err
 	}
 	// get version info
-	if err = getVersion(kc, path, format, gz, filenamePrefix); err != nil {
+	if err = getVersion(kc, path, format, gz); err != nil {
 		return err
 	}
 	size := ""
 	if tgz {
-		if size, err = tgzAndPrune(kc, path, prune, copyToPod, filenamePrefix); err != nil {
+		if size, err = tgzAndPrune(kc, path, prune, copyToPod, filename); err != nil {
 			return err
 		}
 	}
 	// create big fat file
 	if !splitgv {
-		if size, err = joinAll(kc, path, dumpDir, format, gzBigFile, nologs, copyToPod, filenamePrefix); err != nil {
+		if size, err = joinAll(kc, path, dumpDir, format, gzBigFile, nologs, copyToPod, filename); err != nil {
 			return err
 		}
 	}
@@ -258,6 +259,13 @@ func (kc *kc) Dump(path string,
 		size, err = fsutil.Size(path)
 		if err != nil {
 			return err
+		}
+		if filename != "" {
+			newpath := targetDir + "/" + filename
+			if err := fsutil.Move(path, newpath); err != nil {
+				return err
+			}
+			os.RemoveAll(path)
 		}
 	}
 	// collect raised errors by async routines
@@ -275,12 +283,18 @@ func (kc *kc) Dump(path string,
 	return nil
 }
 
-func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bool, copyToPod string, filenamePrefix string) (string, error) {
+func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bool, copyToPod string, filename string) (string, error) {
 	bigFileName := dumpDir
 	if format == YAML {
 		bigFileName = bigFileName + ".yaml"
+		if filename != "" {
+			filename = filename + ".yaml"
+		}
 	} else {
 		bigFileName = bigFileName + ".json"
+		if filename != "" {
+			filename = filename + ".json"
+		}
 	}
 	bigFilePath := strings.Replace(path, dumpDir+"/", "", -1) + bigFileName
 	logger.Info("joining extracted into a single file " + bigFilePath)
@@ -314,6 +328,9 @@ func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bo
 		}
 		logger.Info("gzipped " + bigFilePath)
 		bigFilePath = bigFilePath + ".gz"
+		if filename != "" {
+			filename = filename + ".gz"
+		}
 	}
 	if nologs {
 		os.Remove(path)
@@ -322,8 +339,8 @@ func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bo
 	if err != nil {
 		return "", err
 	}
-	if filenamePrefix != "" {
-		newpath := filepath.Dir(bigFilePath) + "/" + filenamePrefix + filepath.Base(bigFilePath)
+	if filename != "" {
+		newpath := filepath.Dir(bigFilePath) + "/" + filename
 		if err := fsutil.Move(bigFilePath, newpath); err != nil {
 			return "", err
 		}
@@ -338,7 +355,7 @@ func joinAll(kc *kc, path string, dumpDir string, format int, gz bool, nologs bo
 	return sz, nil
 }
 
-func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string, filenamePrefix string) (string, error) {
+func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string, filename string) (string, error) {
 	tgzpath := path[:len(path)-1] + ".tar"
 	if err := archive(path, tgzpath); err != nil {
 		logger.Error("tape archiving error", zap.Error(err))
@@ -355,8 +372,9 @@ func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string, filenamePref
 	if err != nil {
 		return "", err
 	}
-	if filenamePrefix != "" {
-		newpath := filepath.Dir(fname) + "/" + filenamePrefix + filepath.Base(fname)
+	if filename != "" {
+		filename = filename + ".tar.gz"
+		newpath := filepath.Dir(fname) + "/" + filename
 		if err := fsutil.Move(fname, newpath); err != nil {
 			return "", err
 		}
@@ -431,7 +449,7 @@ func getGroupVersionKind(kc *kc, path string, gvkExclusionList []string, gz bool
 	return apis, nil
 }
 
-func getVersion(kc *kc, path string, format int, gz bool, filenamePrefix string) error {
+func getVersion(kc *kc, path string, format int, gz bool) error {
 	// /version does not accept yaml
 	version, err := kc.Get("/version", overrideAcceptWithJson)
 	if err != nil {
@@ -448,9 +466,9 @@ func getVersion(kc *kc, path string, format int, gz bool, filenamePrefix string)
 	if version, err = yq(`. += {"dumpDate": "%s"}`, version, time.Now().Format(time.RFC3339)); err != nil {
 		return err
 	}
-	if version, err = yq(`. += {"dumpPrefix": "%s"}`, version, filenamePrefix); err != nil {
-		return err
-	}
+	// if version, err = yq(`. += {"dumpPrefix": "%s"}`, version, filename); err != nil {
+	// 	return err
+	// }
 	// version can't be split since it is not presented as a ResourceList
 	if format == JSON_LINES || format == JSON_LINES_WRAPPED {
 		format = JSON

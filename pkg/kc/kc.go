@@ -118,7 +118,7 @@ type (
 		Ns() (string, error)
 		NsNames() ([]string, error)
 		ApiResources() (string, error)
-		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, filenamePrefix string, tailLines int, progress func()) error
+		Dump(path string, nsExclusionList []string, gvkExclusionList []string, syncChunkMap map[string]int, asyncChunkMap map[string]int, gz bool, tgz bool, prune bool, splitns bool, splitgv bool, format int, poolSize int, chunkSize int, escapeEncodedJson bool, copyToPod string, filename string, tailLines int, progress func()) error
 		setCert(cert []byte, key []byte)
 		send(method string, apiCall string, body string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
