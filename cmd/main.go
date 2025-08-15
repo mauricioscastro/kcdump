@@ -102,7 +102,7 @@ func init() {
 	}()
 }
 
-// readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g' | sed -e 's/--sgv/--sgv, --split-group-version-kind/g' -e 's/--sns/--sns, --split-namespaces/g' -e 's/--xgvk/--xgvk, --exclude-group-version-kind/g' -e 's/--xns/--xns, --exclude-namespace/g'
+// readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g' | sed -e 's/`--sgv/`--sgv, --split-group-version-kind/g' -e 's/`--sns/`--sns, --split-namespaces/g' -e 's/`--xgvk/`--xgvk, --exclude-group-version-kind/g' -e 's/`--xns/`--xns, --exclude-namespace/g'
 
 func main() {
 	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
@@ -111,7 +111,7 @@ func main() {
 	pflag.BoolVar(&ns, "printns", false, "print (filtered or not) namespaces list and exit (default false)")
 	pflag.BoolVar(&gvk, "printgvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
 	pflag.BoolVar(&splitns, "sns", false, "split namespaced items into directories with their namespace name (default false)")
-	pflag.BoolVar(&splitgv, "sgv", false, "split groupVersion in separate files. when false: will force --sns=false, only accepts --format 'yaml' or 'json_lines', ignores --tgz and a big file is created with everything inside (default false)")
+	pflag.BoolVar(&splitgv, "sgv", false, "split groupVersion in separate files. when false: will force --sns=false, only accepts --format 'yaml' or 'json_lines'. ignores --tgz.")
 	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma --xns "open-.*,kube.*"`)
 	pflag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	pflag.StringVar(&targetDir, "targetdir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
