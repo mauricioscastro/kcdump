@@ -7,7 +7,9 @@ ENV POSTGRESQL_DATABASE=postgres
 ENV PATH="$PATH:/usr/pgsql-17/bin"
 
 RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
-    dnf install -y postgresql17-server
+    dnf install -y postgresql17-plpython3 && \
+    dnf install -y postgresql17-server && \
+    dnf install -y python3-yaml
 
 COPY dumpdb-init.sql /var/lib/pgsql/
 

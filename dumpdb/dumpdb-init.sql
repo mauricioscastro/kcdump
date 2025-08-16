@@ -217,4 +217,23 @@ begin
 end;
 $$;
 
+CREATE EXTENSION IF NOT EXISTS plpython3u;
+
+CREATE OR REPLACE FUNCTION j2y(json_data jsonb)
+RETURNS text
+LANGUAGE plpython3u
+AS $$
+import json
+import yaml
+
+try:
+    if json_data is None:
+        return None
+    
+    return yaml.dump(json.loads(json_data), default_flow_style=False, sort_keys=False, allow_unicode=True)
+    
+except Exception as e:
+    plpy.error(f"Error converting JSON to YAML: {str(e)}")
+$$;
+
 -- select load_cluster_data('/kcdump');
