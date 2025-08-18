@@ -65,8 +65,8 @@ declare
     apir record;
 begin
     perform clean_views();
-    drop table if exists cluster;
 
+    drop table if exists cluster;
     create table if not exists cluster
     (
         id       text,

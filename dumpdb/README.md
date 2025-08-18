@@ -42,7 +42,7 @@ from
 where
     namespace = 'echo'
 ```
-Where *'j2y'* function is python function pre-defined in the [init script](dumpdb-init.sql).
+Where *'j2y'* function is a python function pre-defined in the [init script](dumpdb-init.sql).
 
 To build it from the git repo base directory:
 ```bash
