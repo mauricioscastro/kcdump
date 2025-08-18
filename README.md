@@ -3,8 +3,6 @@
 
 This comes from [a operator I am building to pull reports from k8s clusters](https://github.com/mauricioscastro/hcreport/tree/dev) and it ended up as a reasonable command line binary executable so I decided to put it apart here. 
 
-Cutting to the chase and leaving explanations for later. It will work like any ordinary kube client and depend on a kubeconfig. Get the command line options with -h.
-
 ```bash
 > kcdump -h
 ```
