@@ -6,7 +6,7 @@ All the lines from all the generated files in `--targetDir` directory of the kcd
 A table named *'apiresources'* will be created (based on cluster) with all detected api resources in the cluster (the ones not filtered by kcdump config).
 A materialized view with the name *'resources'* will be created (based on cluster) with the resources found in the cluster.
 
-Run with `podman run -it --rm -v ~/.kube/kcdump:/kcdump --name dumpdb quay.io/hcreport/dumpdb postgres` optionally exposing the db port `-p 5432:5432` and remembering the default target directory of the kcdump command is *~/.kube/kcdump*, if you used another you have to mount it in the container.
+Run with `podman run -it --rm -v ~/.kube/kcdump:/kcdump --name dumpdb quay.io/hcreport/dumpdb` optionally exposing the db port `-p 5432:5432` and remembering the default target directory of the kcdump command is *~/.kube/kcdump*, if you used another you have to mount it in the container.
 
 Once the postgres db is running you can `podman exec dumpdb psql -c "select load_cluster_data('/kcdump')"` where, of course, */kcdump* is where the output files are.
 
