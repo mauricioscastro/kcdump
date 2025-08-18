@@ -1,3 +1,22 @@
+CREATE EXTENSION IF NOT EXISTS plpython3u;
+
+CREATE OR REPLACE FUNCTION j2y(json_data jsonb)
+RETURNS text
+LANGUAGE plpython3u
+AS $$
+import json
+import yaml
+
+try:
+    if json_data is None:
+        return None
+    
+    return yaml.dump(json.loads(json_data), default_flow_style=False, sort_keys=False, allow_unicode=True)
+    
+except Exception as e:
+    plpy.error(f"Error converting JSON to YAML: {str(e)}")
+$$;
+
 create or replace function jp(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns setof jsonb
     language sql
@@ -62,7 +81,7 @@ begin
     -- load kcdump files into cluster table
     --
     for cdata in
-       select replace(pg_ls_dir, '.json.gz', '') cluster, dir || '/' || pg_ls_dir data_file from (
+        select replace(pg_ls_dir, '.json.gz', '') cluster, dir || '/' || pg_ls_dir data_file from (
         select * from pg_ls_dir(dir) where pg_ls_dir like '%.json.gz')
     loop
         execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
@@ -182,6 +201,29 @@ begin
     from  cluster where api_name = 'versions' and api_k = 'Version';
 
     --
+    -- exploded resources view
+    --
+    create materialized view if not exists resources as
+    select * from (
+        select 
+            id cluster_id,
+            api_id, 
+            api_name, 
+            api_gv gv, 
+            api_k kind,
+            jp(_, '$.items[*].metadata.name')->>0 name,
+            jp(_, '$.items[*].metadata.namespace')->>0 namespace,
+            jp(_, '$.items[*]') _
+        from cluster where api_id not in ('apiresources', 'versions', 'namespaces')
+    );
+
+    create index if not exists resources_cluster_id on resources (cluster_id);
+    create index if not exists resources_api_id on resources (api_id);
+    create index if not exists resources_name on resources (name);
+    create index if not exists resources_namespace on resources (namespace);
+    create index if not exists resources_kind on resources (kind);
+
+    --
     -- create views for all api resources with at least one object found for all clusters
     --
     for apir in
@@ -217,23 +259,6 @@ begin
 end;
 $$;
 
-CREATE EXTENSION IF NOT EXISTS plpython3u;
 
-CREATE OR REPLACE FUNCTION j2y(json_data jsonb)
-RETURNS text
-LANGUAGE plpython3u
-AS $$
-import json
-import yaml
-
-try:
-    if json_data is None:
-        return None
-    
-    return yaml.dump(json.loads(json_data), default_flow_style=False, sort_keys=False, allow_unicode=True)
-    
-except Exception as e:
-    plpy.error(f"Error converting JSON to YAML: {str(e)}")
-$$;
 
 -- select load_cluster_data('/kcdump');
