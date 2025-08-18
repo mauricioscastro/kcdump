@@ -208,7 +208,6 @@ begin
         select 
             id cluster_id,
             api_id, 
-            api_name, 
             api_gv gv, 
             api_k kind,
             jp(_, '$.items[*].metadata.name')->>0 name,
@@ -226,36 +225,36 @@ begin
     --
     -- create views for all api resources with at least one object found for all clusters
     --
-    for apir in
-        select a.api_id, a.namespaced from apiresources a join cluster c on a.api_id = c.api_id
-    loop
-        if apir.namespaced then
-            execute format('
-            create materialized view if not exists %s as
-            select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
-                   jp(c._, ''$.items[*].metadata.name'')->>0 name,
-                   jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
-                   jp(c._, ''$.items[*]'') _
-                   from cluster c
-            where c.api_id=''%s'';
-            ', apir.api_id, apir.api_id);
-            execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
-            execute format ('create index if not exists %s_namens on %s (name, namespace);',apir.api_id, apir.api_id);
-            execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
-        else
-            execute format('
-            create materialized view if not exists %s as
-            select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
-                   jp(c._, ''$.items[*].metadata.name'')->>0 name,
-                   jp(c._, ''$.items[*]'') _
-                   from cluster c
-            where c.api_id=''%s'';
-            ', apir.api_id, apir.api_id);
-            execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
-            execute format ('create index if not exists %s_name on %s (name);', apir.api_id, apir.api_id);
-            execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
-        end if;
-    end loop;
+    -- for apir in
+    --     select a.api_id, a.namespaced from apiresources a join cluster c on a.api_id = c.api_id
+    -- loop
+    --     if apir.namespaced then
+    --         execute format('
+    --         create materialized view if not exists %s as
+    --         select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
+    --                jp(c._, ''$.items[*].metadata.name'')->>0 name,
+    --                jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
+    --                jp(c._, ''$.items[*]'') _
+    --                from cluster c
+    --         where c.api_id=''%s'';
+    --         ', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_namens on %s (name, namespace);',apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
+    --     else
+    --         execute format('
+    --         create materialized view if not exists %s as
+    --         select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
+    --                jp(c._, ''$.items[*].metadata.name'')->>0 name,
+    --                jp(c._, ''$.items[*]'') _
+    --                from cluster c
+    --         where c.api_id=''%s'';
+    --         ', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_name on %s (name);', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
+    --     end if;
+    -- end loop;
 end;
 $$;
 
