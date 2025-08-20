@@ -41,14 +41,9 @@ jobs:
         export REGISTRY_AUTH_FILE=/tmp/config.json
 
         build_date=`date +'%Y%m%d%H%M%S'`          
-        short=`echo ${{ github.sha }}" | cut -c 1-7`
+        short=`echo "${{ github.sha }}" | cut -c 1-7`
+        tag="${short}-${build_date}"
 
-        echo $short
-        echo $build_date
-        echo "${short}-${build_date}"
-        
-        # tag="${short}-${build_date}"
-
-        # podman build . -t $IMG:$tag
-        # podman push $IMG:$tag
-        # podman push $IMG:$tag $IMG:latest
+        podman build . -t $IMG:$tag
+        podman push $IMG:$tag
+        podman push $IMG:$tag $IMG:latest
