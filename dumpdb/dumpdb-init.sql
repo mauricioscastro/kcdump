@@ -204,17 +204,15 @@ begin
     -- exploded resources view
     --
     create materialized view if not exists resources as
-    select * from (
-        select 
-            id cluster_id,
-            api_id, 
-            api_gv gv, 
-            api_k kind,
-            jp(_, '$.items[*].metadata.name')->>0 name,
-            jp(_, '$.items[*].metadata.namespace')->>0 namespace,
-            jp(_, '$.items[*]') _
-        from cluster where api_id not in ('apiresources', 'versions', 'namespaces')
-    );
+    select 
+        id cluster_id,
+        api_id, 
+        api_gv gv, 
+        api_k kind,
+        jp(_, '$.items[*].metadata.name')->>0 name,
+        jp(_, '$.items[*].metadata.namespace')->>0 namespace,
+        jp(_, '$.items[*]') _
+    from cluster where api_id not in ('apiresources', 'versions', 'namespaces');
 
     create index if not exists resources_cluster_id on resources (cluster_id);
     create index if not exists resources_api_id on resources (api_id);
