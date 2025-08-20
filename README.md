@@ -72,3 +72,7 @@ or build it locally:
 ```bash
 > make container-build IMG=kcdump
 ```
+
+ > [!IMPORTANT]
+ > Resources containing sensitive data have hardcoded filters to have this data cleaned up in kcdump source code. Currently Secrets and OAuthClientAuthorizations.
+
