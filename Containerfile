@@ -15,6 +15,12 @@ COPY --from=builder /workspace/manager /bin/kcdump
 RUN adduser kcdump -u 1000 && \
     mkdir -p /tmp/kcdump && \
     chown -R kcdump:kcdump /tmp/kcdump
+
 WORKDIR /home/kcdump
+
 USER 1000:1000
+
+ENV KCD_LOGLEVEL=info
+ENV KCD_TARGETDIR=/tmp/kcdump
+
 ENTRYPOINT ["/bin/kcdump"]
