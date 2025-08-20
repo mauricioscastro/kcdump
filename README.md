@@ -74,5 +74,5 @@ or build it locally:
 ```
 
  > [!IMPORTANT]
- > Resources containing sensitive data have hardcoded filters to have this data cleaned up in kcdump source code. Currently Secrets and OAuthClientAuthorizations.
+ > Resources containing sensitive data have hardcoded filters to have this data cleaned up in kcdump source code in case they are not excluded from the dump. Currently Secrets and OAuthClientAuthorizations
 
