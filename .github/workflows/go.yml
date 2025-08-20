@@ -32,10 +32,10 @@ jobs:
         name: Release latest
         draft: false
         prerelease: false
-    - name: Build kcdump container image
-      uses: redhat-actions/buildah-build@v2
-      with:
-        image: kcdump
-        tags: latest ${{ github.sha }}
-        containerfiles: |
-          ./Containerfile
+    - name: Build and push with Podman
+      run: |-
+        echo "${{ secrets.HCREPORT_ON_QUAY }}" > /tmp/config.json
+        export REGISTRY_AUTH_FILE=/tmp/config.json
+
+        podman build . -t quay.io/hcreport/kcdump:latest
+        podman push quay.io/hcreport/kcdump:latest
