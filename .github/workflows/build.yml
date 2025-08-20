@@ -3,7 +3,7 @@
 #
 # build, release, img build and push kcdump and dumpdb
 #
-name: Go
+name: build kcdump and dumpdb
 
 on:
   push:
