@@ -34,7 +34,8 @@ jobs:
         prerelease: false
     - name: Build and push with Podman
       env:
-        IMG: quay.io/hcreport/kcdump
+        IMG_KCDUMP: quay.io/hcreport/kcdump
+        IMG_DUMPDB: quay.io/hcreport/dumpdb
         PODMAN_USR: hcreport+hcrepotrobot
       run: |-
         build_date=`date +'%Y%m%d%H%M%S'`          
@@ -42,6 +43,11 @@ jobs:
         tag="${short}-${build_date}"
 
         podman login -u=$PODMAN_USR -p=${{ secrets.KCDUMP_DUMPDB_ROBOT_ON_QUAY }} quay.io
-        podman build . -t $IMG:$tag
-        podman push $IMG:$tag
-        podman push $IMG:$tag $IMG:latest
+        podman build . -t $IMG_KCDUMP:$tag
+        podman push $IMG_KCDUMP:$tag
+        podman push $IMG_KCDUMP:$tag $IMG_KCDUMP:latest
+
+        cd dumpdb
+        podman build . -t $IMG_DUMPDB:$tag
+        podman push $IMG_DUMPDB:$tag
+        podman push $IMG_DUMPDB:$tag $IMG_DUMPDB:latest
