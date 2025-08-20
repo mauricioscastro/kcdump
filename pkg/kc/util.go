@@ -32,10 +32,11 @@ const (
 )
 
 var (
-	DefaultCleaningQuery  = `.items = [.items[] | del(.metadata.managedFields) | del(.metadata.uid) | del (.metadata.creationTimestamp) | del (.metadata.generation) | del(.metadata.resourceVersion) | del (.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])] | del(.metadata)`
-	SecretsCleaningQuery  = `with(.items[]; del(.metadata.annotations."openshift.io/token-secret.value") | select(has("data")) | .data[] = "" | select(has("stringData")) | .stringData.[] = "")`
-	apiAvailableListQuery = `with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | .name + ";" + .groupVersion + ";" + .namespaced`
-	dumpWorkerErrors      atomic.Value
+	DefaultCleaningQuery             = `.items = [.items[] | del(.metadata.managedFields) | del(.metadata.uid) | del (.metadata.creationTimestamp) | del (.metadata.generation) | del(.metadata.resourceVersion) | del (.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])] | del(.metadata)`
+	SecretsCleaningQuery             = `with(.items[]; del(.metadata.annotations."openshift.io/token-secret.value") | select(has("data")) | .data[] = "" | select(has("stringData")) | .stringData.[] = "")`
+	OpenshiftOAuthTokenCleaningQuery = `with(.items[]; select(has("authorizeToken")) | .authorizeToken = "")`
+	apiAvailableListQuery            = `with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | .name + ";" + .groupVersion + ";" + .namespaced`
+	dumpWorkerErrors                 atomic.Value
 )
 
 func (kc *kc) NsNames() ([]string, error) {
@@ -719,6 +720,12 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 	}
 	if name == "secrets" {
 		cleanApiResource, err = yjq.YqEval(SecretsCleaningQuery, cleanApiResource)
+		if err != nil {
+			return "", err
+		}
+	}
+	if name == "useroauthaccesstokens" {
+		cleanApiResource, err = yjq.YqEval(OpenshiftOAuthTokenCleaningQuery, cleanApiResource)
 		if err != nil {
 			return "", err
 		}
