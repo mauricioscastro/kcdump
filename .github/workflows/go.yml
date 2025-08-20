@@ -33,10 +33,17 @@ jobs:
         draft: false
         prerelease: false
     - name: Build and push with Podman
+      env:
+        IMG: quay.io/hcreport/kcdump
       run: |-
-        echo "${{ secrets.HCREPORT_ON_QUAY }}"
-        echo "${{ secrets.HCREPORT_ON_QUAY }}" > /tmp/config.json
-        # export REGISTRY_AUTH_FILE=/tmp/config.json
+        echo "${{ secrets.KCDUMP_DUMPDB_ROBOT_ON_QUAY }}"
+        echo "${{ secrets.KCDUMP_DUMPDB_ROBOT_ON_QUAY }}" > /tmp/config.json
+        export REGISTRY_AUTH_FILE=/tmp/config.json
 
-        # podman build . -t quay.io/hcreport/kcdump:latest
-        # podman push quay.io/hcreport/kcdump:latest
+        build_date=`date +'%Y%m%d%H%M%S'`          
+        short=`echo ${{ github.sha }}" | cut -c 1-7`
+        tag= "$short-$build_date"
+
+        podman build . -t $IMG:$tag
+        podman push $IMG:$tag
+        podman push $IMG:$tag $IMG:latest
