@@ -6,7 +6,9 @@ ENV POSTGRESQL_PASSWORD=postgres
 ENV POSTGRESQL_DATABASE=postgres
 ENV PATH="$PATH:/usr/pgsql-17/bin"
 
-RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
+RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm && \
+    dnf install -y inotify-tools && \
+    dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf install -y postgresql17-plpython3 && \
     dnf install -y postgresql17-server && \
     dnf install -y python3-yaml
@@ -26,7 +28,16 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
     sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf && \
     mkdir /tmp/kcdump
 
-ENTRYPOINT ["postgres"]    
+ENV KCDUMP_DIR=/tmp/kcdump
+
+ENTRYPOINT \
+  inotifywait -q -m -r -e create \
+  --format '%T inotifywait %e %w%f' --timefmt '%Y-%m-%d %H:%M:%S' \
+  $KCDUMP_DIR | while read line; do \
+    echo $line; \
+    psql -c "select load_cluster_data('${KCDUMP_DIR}')"; \
+  done & \
+  postgres
 
 
 

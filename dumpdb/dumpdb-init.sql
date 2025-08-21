@@ -17,6 +17,18 @@ except Exception as e:
     plpy.error(f"Error converting JSON to YAML: {str(e)}")
 $$;
 
+CREATE OR REPLACE FUNCTION rm_file(file_path text)
+RETURNS void
+LANGUAGE plpython3u
+AS $$
+import os
+try:
+    os.remove(file_path)
+except Exception as e:
+    pass    
+print('removed file: ' + file_path)
+$$;
+
 create or replace function jp(target jsonb, path jsonpath, vars jsonb default '{}', silent boolean default true)
     returns setof jsonb
     language sql
@@ -103,6 +115,8 @@ begin
                            api_gv = _ ->> 'apiVersion',
                            api_k = replace(_ ->> 'kind', 'List', '')
         where api_name is null and id is null;
+
+        perform rm_file(cdata.data_file);
     end loop;
 
     create index if not exists cluster_id_gv_name on cluster (id, api_name, api_gv);
@@ -253,9 +267,7 @@ begin
     --         execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
     --     end if;
     -- end loop;
+    raise notice 'cluster data loaded';
 end;
 $$;
-
-
-
 -- select load_cluster_data('/kcdump');
