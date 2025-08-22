@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -77,7 +78,7 @@ type (
 
 		// target format = namespace/pod/container. if container is omitted the first is used.
 		// if namespace is omitted, as in "/echo-/" it assumes it's running inside the cluster and will try '/var/run/secrets/kubernetes.io/serviceaccount/namespace
-		// pod name can be a substring of the target pod in such case first found pod name containing such substring in the replica list is used
+		// pod name can be a substring of the target pod in such case all pods containing such substring in the replica list are used
 		// returns stdout, stderr
 		Exec(target string, cmd []string) (string, string, error)
 
@@ -87,8 +88,8 @@ type (
 		// as file name and written into that path assumed to be a directory.
 		// copy operations needs the targeted container to have the 'dd' utility in its path. if
 		// not in path you can set its absolute path location with SetDDpath().
-		// in 'pod:/[...]' the pod name can be a substring of the target pod for which 1st found
-		// pod is used if more than one replica exists. container is optional and when this
+		// in 'pod:/[...]' the pod name can be a substring of the target pod for which all
+		// pods are used if more than one replica exists. container is optional and when this
 		// happens the 1st found is used. if pod file destination is not specified while copying to pod '/tmp' directory will be used as target.
 		// if namespace is omitted, as in "pod://echo-/" it assumes it's running inside the cluster and will try '/var/run/secrets/kubernetes.io/serviceaccount/namespace
 		Copy(src string, dst string) error
@@ -381,17 +382,18 @@ func (kc *kc) Api() string {
 	return kc.api
 }
 
-func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string, string, string, error) {
+func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string, map[string][]string, error) {
+	pod_container := make(map[string][]string)
 	src = strings.Trim(src, " ")
 	dst = strings.Trim(dst, " ")
 	logger.Debug("src=" + src + " dst=" + dst)
 	if (!strings.HasPrefix(src, "file:/") && !strings.HasPrefix(src, "pod:/")) ||
 		(!strings.HasPrefix(dst, "file:/") && !strings.HasPrefix(dst, "pod:/")) {
-		return false, "", "", "", "", "", errors.New("source and or destiny does not follow 'file:/' 'pod:/' pattern")
+		return false, "", "", "", pod_container, errors.New("source and or destiny does not follow 'file:/' 'pod:/' pattern")
 	}
 	if (strings.HasPrefix(src, "file:/") && strings.HasPrefix(dst, "file:/")) ||
 		(strings.HasPrefix(src, "pod:/") && strings.HasPrefix(dst, "pod:/")) {
-		return false, "", "", "", "", "", errors.New("source and destiny cannot be both 'file:/' or both 'pod:/'")
+		return false, "", "", "", pod_container, errors.New("source and destiny cannot be both 'file:/' or both 'pod:/'")
 	}
 	sending := strings.HasPrefix(src, "file:/")
 	localFile, podFile, namespace, pod, container := "", "", "", "", ""
@@ -405,88 +407,92 @@ func getCopyParams(kc *kc, src string, dst string) (bool, string, string, string
 	localFile = local[6:]
 	logger.Debug("localfile=" + localFile)
 	if sending && !fsutil.IsFile(localFile) {
-		return false, "", "", "", "", "", errors.New("pattern 'file:/' in copyTo used with non file (directory?) or inexistent")
+		return false, "", "", "", pod_container, errors.New("pattern 'file:/' in copyTo used with non file (directory?) or inexistent")
 	}
-	namespace, pod, container, err := getPodTarget(remote)
+	namespace, pod, container, path, err := getPodTarget(remote)
 	if err != nil {
-		return false, "", "", "", "", "", err
+		return false, "", "", "", pod_container, err
 	}
-	logger.Debug("namespace=" + namespace + " pod=" + pod + " container=" + container)
-	container_split := strings.Split(container, ":")
-	logger.Debug("", zap.Strings("container_split", container_split))
-	container = container_split[0]
-	if len(container_split) == 1 {
+	logger.Debug("namespace=" + namespace + " pod=" + pod + " container=" + container + " path=" + path)
+	if path == "" {
 		if !sending {
-			return false, "", "", "", "", "", errors.New("getCopyParams: absent pod source file in pod:/" + remote)
+			return false, "", "", "", pod_container, errors.New("getCopyParams: absent pod source file in pod:/" + remote)
 		}
 		logger.Info("no directory specified, copying to /tmp")
 		podFile = "/tmp/" + filepath.Base(localFile)
 	} else {
-		podFile = container_split[1]
-		if strings.HasSuffix(podFile, "/") {
+		if strings.HasSuffix(path, "/") {
 			if !sending {
-				return false, "", "", "", "", "", errors.New("getCopyParams: absent pod source file in pod:/" + remote)
+				return false, "", "", "", pod_container, errors.New("getCopyParams: absent pod source file in pod:/" + remote)
 			}
-			podFile = podFile + filepath.Base(localFile)
+			podFile = path + filepath.Base(localFile)
+		} else {
+			podFile = path
 		}
 	}
-	logger.Sugar().Debug("sending=", sending, " localfile=", localFile)
+	logger.Sugar().Debug("getCopyParams: sending=", sending, " localfile=", localFile, " podfile=", podFile)
 	if !sending && strings.HasSuffix(localFile, "/") {
 		localFile = localFile + filepath.Base(podFile)
 	}
-	pod_container := getPodAndContainerMap(kc, namespace, pod, container)
+	pod_container = getPodAndContainerMap(kc, namespace, pod, container)
 	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " pod_container=" + fmt.Sprint(pod_container))
-	pod_container_k := slices.Collect(maps.Keys(pod_container))
-	_pod, _container := "", ""
-	if len(pod_container_k) == 0 {
-		return false, "", "", "", "", "", fmt.Errorf("getCopyParams: not found namespace=%s pod=%s container=%s", namespace, pod, container)
-	} else {
-		_pod, _container = pod_container_k[0], pod_container[pod_container_k[0]][0]
-	}
-	if len(pod_container_k) > 1 || len(pod_container[_pod]) > 1 {
-		logger.Info("defaulting to pod " + _pod + " container " + _container)
-	}
-	return sending, localFile, podFile, namespace, _pod, _container, nil
+	return sending, localFile, podFile, namespace, pod_container, nil
 }
 
 func (kc *kc) Copy(src string, dst string) error {
-	sending, localFile, podFile, namespace, pod, container, err := getCopyParams(kc, src, dst)
+	sending, localFile, podFile, namespace, pod_container, err := getCopyParams(kc, src, dst)
 	if err != nil {
 		kc.err = err
 		logger.Error(err.Error())
 		return err
 	}
-	stdin := false
-	fileSizeReportedToDD := int64(-1)
-	queryCmd := fmt.Sprintf("&command=%s&command=%s&command=%s", kc.ddPath, url.QueryEscape("bs=1"), url.QueryEscape("if="+podFile))
-	if sending {
-		stdin = true
-		info, err := os.Stat(localFile)
-		if err != nil {
-			kc.err = err
-			logger.Error(err.Error())
-			return err
-		}
-		fileSizeReportedToDD = info.Size()
-		queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s&command=%s%d", kc.ddPath, url.QueryEscape("of="+podFile), url.QueryEscape("bs=1"), url.QueryEscape("count="), fileSizeReportedToDD)
-	}
-	logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("reqCmd", queryCmd))
-	wsConn, resp, err := getWsConn(kc, namespace, pod, container, queryCmd, stdin)
-	if err != nil {
+	pod_container_k := slices.Collect(maps.Keys(pod_container))
+	if len(pod_container_k) == 0 {
+		err = fmt.Errorf("Copy: not found source=%s target=%s", src, dst)
 		kc.err = err
-		logger.Error("copy dial ws conn:", zap.Error(err))
-		logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
 		return err
 	}
-	defer wsConn.Close()
-	for k, v := range resp.Header {
-		logger.Debug("copy resp headers", zap.Strings(k, v))
+	for pod, container_list := range pod_container {
+		container := container_list[0]
+		stdin := false
+		fileSizeReportedToDD := int64(-1)
+		queryCmd := fmt.Sprintf("&command=%s&command=%s&command=%s", kc.ddPath, url.QueryEscape("bs=1"), url.QueryEscape("if="+podFile))
+		if sending {
+			stdin = true
+			info, err := os.Stat(localFile)
+			if err != nil {
+				kc.err = err
+				logger.Error(err.Error())
+				return err
+			}
+			fileSizeReportedToDD = info.Size()
+			queryCmd = fmt.Sprintf("&command=%s&command=%s&command=%s&command=%s%d", kc.ddPath, url.QueryEscape("of="+podFile), url.QueryEscape("bs=1"), url.QueryEscape("count="), fileSizeReportedToDD)
+		}
+		logger.Debug("copy cmd", zap.Bool("isSending", sending), zap.String("reqCmd", queryCmd))
+		wsConn, resp, err := getWsConn(kc, namespace, pod, container, queryCmd, stdin)
+		if err != nil {
+			kc.err = err
+			logger.Error("copy dial ws conn:", zap.Error(err))
+			logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
+			return err
+		}
+		for k, v := range resp.Header {
+			logger.Debug("copy resp headers", zap.Strings(k, v))
+		}
+		logger.Debug("Copy", zap.String("src", src), zap.String("dst", dst))
+		if sending {
+			err = copyTo(wsConn, localFile, fileSizeReportedToDD)
+		} else {
+			err = copyFrom(wsConn, localFile, src)
+		}
+		if err != nil {
+			kc.err = err
+			logger.Error("Copy:", zap.Error(err))
+			logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
+		}
+		wsConn.Close()
 	}
-	logger.Debug("Copy", zap.String("src", src), zap.String("dst", dst))
-	if sending {
-		return copyTo(wsConn, localFile, fileSizeReportedToDD)
-	}
-	return copyFrom(wsConn, localFile, src)
+	return nil
 }
 
 func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
@@ -541,10 +547,18 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 	if err != nil {
 		return fmt.Errorf("file stat copyFrom. localfile=%s", localFile)
 	}
-	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes", info.Size())) {
+	logger.Sugar().Debug(" dd stderr=", stdErr.String())
+	logger.Sugar().Debug("local size=", info.Size())
+
+	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size())
+	match, err := regexp.MatchString(pattern, stdErr.String())
+	if err != nil || match {
+		if err != nil {
+			return err
+		}
 		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
 	}
-	if strings.Contains(stdErr.String(), "dd: error") {
+	if strings.Contains(stdErr.String(), "error") {
 		return fmt.Errorf("error copying from %s\n%s", src, stdErr.String())
 	}
 	return nil
@@ -596,8 +610,15 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	if err != nil {
 		return fmt.Errorf("file stat copyFrom. localfile=%s", localFile)
 	}
-	if !strings.Contains(stdErr.String(), fmt.Sprintf("%d bytes", info.Size())) {
-		return fmt.Errorf("%s file size = %d. different from dd stderr\nif trying to copy to a directory add '/' to the end of pod destination\n%s", localFile, info.Size(), stdErr.String())
+	logger.Sugar().Debug(" dd stderr=", stdErr.String())
+	logger.Sugar().Debug("local size=", info.Size())
+	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size())
+	match, err := regexp.MatchString(pattern, stdErr.String())
+	if err != nil || match {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
 	}
 	return nil
 }
@@ -606,7 +627,7 @@ func (kc *kc) Log(target string, tailLines int) (string, error) {
 	if tailLines == 0 {
 		return "", nil
 	}
-	namespace, pod, container, err := getPodTarget(target)
+	namespace, pod, container, _, err := getPodTarget(target)
 	if err != nil {
 		return "", err
 	}
@@ -652,52 +673,55 @@ func (kc *kc) Log(target string, tailLines int) (string, error) {
 }
 
 func (kc *kc) Exec(target string, cmd []string) (string, string, error) {
-	namespace, pod, container, err := getPodTarget(target)
+	namespace, pod, container, _, err := getPodTarget(target)
 	if err != nil {
 		return "", "", err
 	}
 	pod_container := getPodAndContainerMap(kc, namespace, pod, container)
 	logger.Debug("getPodAndContainer ----> namespace=" + namespace + " pod_container=" + fmt.Sprint(pod_container))
 	pod_container_k := slices.Collect(maps.Keys(pod_container))
-	_pod, _container := "", ""
 	if len(pod_container_k) == 0 {
 		return "", "", fmt.Errorf("getCopyParams: not found namespace=%s pod=%s container=%s", namespace, pod, container)
-	} else {
-		_pod, _container = pod_container_k[0], pod_container[pod_container_k[0]][0]
-	}
-	if len(pod_container_k) > 1 || len(pod_container[_pod]) > 1 {
-		logger.Info("defaulting to pod " + _pod + " container " + _container)
-	}
-	queryCmd := ""
-	for _, c := range cmd {
-		queryCmd = queryCmd + "&command=" + url.QueryEscape(c)
-	}
-	wsConn, resp, err := getWsConn(kc, namespace, _pod, _container, queryCmd, false)
-	if err != nil {
-		logger.Error("exec dial ws conn:", zap.Error(err))
-		logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
-		return "", "", err
-	}
-	defer wsConn.Close()
-	for k, v := range resp.Header {
-		logger.Debug("exec resp headers", zap.Strings(k, v))
 	}
 	var stdOut, stdErr strings.Builder
-	for {
-		_, m, e := wsConn.ReadMessage()
-		if e != nil {
-			ce, ok := e.(*websocket.CloseError)
-			if !ok || ce.Code != websocket.CloseNormalClosure {
-				logger.Error("ws read:" + e.Error())
+	for _pod, container_list := range pod_container {
+		_container := container_list[0]
+		logger.Info("exec in pod " + _pod + " container " + _container)
+		queryCmd := ""
+		for _, c := range cmd {
+			queryCmd = queryCmd + "&command=" + url.QueryEscape(c)
+		}
+		wsConn, resp, err := getWsConn(kc, namespace, _pod, _container, queryCmd, false)
+		if err != nil {
+			logger.Error("exec dial ws conn:", zap.Error(err))
+			logger.Error("check namespace, pod and container", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container))
+			return "", "", err
+		}
+		for k, v := range resp.Header {
+			logger.Debug("exec resp headers", zap.Strings(k, v))
+		}
+		if len(pod_container_k) > 1 {
+			h := "===> " + namespace + "/" + _pod + "/" + _container + " <===\n"
+			stdOut.WriteString(h)
+			stdErr.WriteString(h)
+		}
+		for {
+			_, m, e := wsConn.ReadMessage()
+			if e != nil {
+				ce, ok := e.(*websocket.CloseError)
+				if !ok || ce.Code != websocket.CloseNormalClosure {
+					logger.Error("ws read:" + e.Error())
+				}
+				break
 			}
-			break
+			if m[0] == 1 {
+				stdOut.WriteString(string(m[1:]))
+			}
+			if m[0] == 2 {
+				stdErr.WriteString(string(m[1:]))
+			}
 		}
-		if m[0] == 1 {
-			stdOut.WriteString(string(m[1:]))
-		}
-		if m[0] == 2 {
-			stdErr.WriteString(string(m[1:]))
-		}
+		wsConn.Close()
 	}
 	return stdOut.String(), stdErr.String(), nil
 }
@@ -720,24 +744,28 @@ func getWsConn(kc *kc, namespace string, _pod string, _container string, queryCm
 	return dialer.Dial(wsUrl, header)
 }
 
-func getPodTarget(target string) (string, string, string, error) {
+func getPodTarget(target string) (string, string, string, string, error) {
 	_target, path := target, ""
 	if i := strings.Index(target, ":"); i != -1 {
 		_target = target[0:i]
-		path = target[i:]
+		if i == len(target)-1 {
+			path = ""
+		} else {
+			path = target[i+1:]
+		}
 	}
 	logger.Debug("getPodTarget", zap.String("_target", _target), zap.String("path", path))
 	targetList := strings.Split(_target, "/")
 	if len(targetList) < 2 {
-		return "", "", "", fmt.Errorf("wrong target format %s. should be '[namespace]/pod[/container]'", target)
+		return "", "", "", "", fmt.Errorf("wrong target format %s. should be '[namespace]/pod[/container[:/path]]'", target)
 	}
 	if len(targetList[0]) == 0 {
 		logger.Debug("getPodTarget with no namespace")
-		namespace, e := fsutil.ReadTextFile(currentNamespace)
+		ns, e := fsutil.ReadTextFile(currentNamespace)
 		if e != nil {
-			return "", "", "", e
+			return "", "", "", "", e
 		}
-		targetList[0] = namespace
+		targetList[0] = ns
 	}
 	namespace := targetList[0]
 	pod := targetList[1]
@@ -745,7 +773,8 @@ func getPodTarget(target string) (string, string, string, error) {
 	if len(targetList) > 2 {
 		container = targetList[2]
 	}
-	return namespace, pod, container + path, nil
+	logger.Debug("getPodTarget", zap.String("namespace", namespace), zap.String("pod", pod), zap.String("container", container), zap.String("path", path))
+	return namespace, pod, container, path, nil
 }
 
 func getPodAndContainerMap(kc *kc, ns string, podSubstring string, container string) map[string][]string {

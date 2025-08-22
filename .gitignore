@@ -29,6 +29,7 @@ reports/**/site
 reports/**/_data
 **/tmp/
 
-
 operator/.kcdump
 cover.out
+
+tmp/*

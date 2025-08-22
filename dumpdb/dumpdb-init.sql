@@ -69,12 +69,13 @@ end;
 $$;
 
 create or replace function load_cluster_data(dir text)
-returns void
+returns text
 language plpgsql as
 $$
 declare
     cdata record;
     apir record;
+    kcdump_load_time text;
 begin
     perform clean_views();
 
@@ -93,8 +94,13 @@ begin
     -- load kcdump files into cluster table
     --
     for cdata in
-        select replace(pg_ls_dir, '.json.gz', '') cluster, dir || '/' || pg_ls_dir data_file from (
-        select * from pg_ls_dir(dir) where pg_ls_dir like '%.json.gz')
+        select 
+            replace(pg_ls_dir, '.json.gz', '') filename,
+            regexp_replace(pg_ls_dir, '^(.+)(?:---hcrcm_id-.+)?\.json\.gz$', '\1') cluster,
+            dir || '/' || pg_ls_dir data_file
+            from (
+                select * from pg_ls_dir(dir) where pg_ls_dir like '%.json.gz'
+            )
     loop
         execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
 
@@ -117,6 +123,8 @@ begin
         where api_name is null and id is null;
 
         perform rm_file(cdata.data_file);
+        select text(FLOOR(EXTRACT(EPOCH FROM NOW()))::BIGINT) into kcdump_load_time;   
+        raise notice '% loaded %', cdata.filename, kcdump_load_time;
     end loop;
 
     create index if not exists cluster_id_gv_name on cluster (id, api_name, api_gv);
@@ -267,7 +275,7 @@ begin
     --         execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
     --     end if;
     -- end loop;
-    raise notice 'cluster data loaded';
+    return 'cluster data load complete';
 end;
 $$;
 -- select load_cluster_data('/kcdump');
