@@ -550,9 +550,9 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 	logger.Sugar().Debug(" dd stderr=", stdErr.String())
 	logger.Sugar().Debug("local size=", info.Size())
 
-	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size())
+	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size(), info.Size())
 	match, err := regexp.MatchString(pattern, stdErr.String())
-	if err != nil || match {
+	if err != nil || !match {
 		if err != nil {
 			return err
 		}
@@ -612,9 +612,9 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	}
 	logger.Sugar().Debug(" dd stderr=", stdErr.String())
 	logger.Sugar().Debug("local size=", info.Size())
-	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size())
+	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size(), info.Size())
 	match, err := regexp.MatchString(pattern, stdErr.String())
-	if err != nil || match {
+	if err != nil || !match {
 		if err != nil {
 			return err
 		}
