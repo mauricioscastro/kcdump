@@ -552,14 +552,11 @@ func copyFrom(wsConn *websocket.Conn, localFile string, src string) error {
 
 	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size(), info.Size())
 	match, err := regexp.MatchString(pattern, stdErr.String())
-	if err != nil || !match {
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
+	if err != nil {
+		return err
 	}
-	if strings.Contains(stdErr.String(), "error") {
-		return fmt.Errorf("error copying from %s\n%s", src, stdErr.String())
+	if !match {
+		return fmt.Errorf("%s file size = %d. different from dd = %s", localFile, info.Size(), stdErr.String())
 	}
 	return nil
 }
@@ -614,11 +611,11 @@ func copyTo(wsConn *websocket.Conn, localFile string, fileSizeReportedToDD int64
 	logger.Sugar().Debug("local size=", info.Size())
 	pattern := fmt.Sprintf(`(?s)%d.*in.*%d.*out`, info.Size(), info.Size())
 	match, err := regexp.MatchString(pattern, stdErr.String())
-	if err != nil || !match {
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("%s file size = %d. different from dd stderr = %s", localFile, info.Size(), stdErr.String())
+	if err != nil {
+		return err
+	}
+	if !match {
+		return fmt.Errorf("%s file size = %d. different from dd = %s", localFile, info.Size(), stdErr.String())
 	}
 	return nil
 }
