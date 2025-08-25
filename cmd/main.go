@@ -181,7 +181,7 @@ func dump() int {
 	}
 	if kc == nil {
 		fmt.Fprintf(os.Stderr, "unable to start k8s client from config file '%s' and context '%s'\n", kubeconfig, context)
-		os.Exit(-1)
+		return 12
 	}
 	outputfmt, e := Kc.FormatCodeFromString(format)
 	if e != nil {
