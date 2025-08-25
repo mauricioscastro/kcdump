@@ -14,11 +14,12 @@ FROM registry.access.redhat.com/ubi9-minimal
 COPY --from=builder /workspace/manager /bin/kcdump
 RUN adduser kcdump -u 1000 && \
     mkdir -p /tmp/kcdump && \
-    chown -R kcdump:kcdump /tmp/kcdump
+    chown -R kcdump:kcdump /tmp/kcdump && \
+    chmod -R 777 /tmp/kcdump
 
 WORKDIR /home/kcdump
 
-USER 1000:1000
+USER kcdump:kcdump
 
 ENV KCD_LOGLEVEL=info
 ENV KCD_TARGETDIR=/tmp/kcdump
