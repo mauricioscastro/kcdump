@@ -48,4 +48,9 @@ To build it from the git repo base directory:
 > podman build . -t dumpdb:latest
 ```
 
+## Run psql to extract a series of yaml manifests
+```sql
+psql -qtAX -P pager=off -c "select '---' || chr(10) || j2y(_) from resources where api_id = 'securitycontextconstraints'"
+```
+
 Have fun!
