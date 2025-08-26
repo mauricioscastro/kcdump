@@ -12,11 +12,11 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 
 FROM registry.access.redhat.com/ubi9-minimal
 COPY --from=builder /workspace/manager /bin/kcdump
-RUN adduser kcdump -u 1000 && \
+RUN adduser kcdump -u 1000 -d /tmp/kcdump && \
     mkdir -p /tmp/kcdump && \
     chown -R kcdump:kcdump /tmp/kcdump 
 
-WORKDIR /home/kcdump
+WORKDIR /tmp/kcdump 
 
 USER kcdump:kcdump
 
