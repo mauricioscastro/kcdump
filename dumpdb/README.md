@@ -52,5 +52,19 @@ To build it from the git repo base directory:
 ```sql
 psql -qtAX -P pager=off -c "select '---' || chr(10) || j2y(_) from resources where api_id = 'securitycontextconstraints'"
 ```
+## List non system Namespaces ordered by name
+```sql
+select distinct namespace 
+from resources 
+where 
+namespace is not null 
+and 
+namespace not in (
+	select distinct namespace 
+	from resources 
+	where 
+	namespace like any (array['openshift-%','kube-%','default'])) 
+order by 1;
+```
 
 Have fun!
