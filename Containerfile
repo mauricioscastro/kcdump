@@ -20,7 +20,6 @@ WORKDIR /tmp/kcdump
 
 USER kcdump:kcdump
 
-ENV KCD_LOGLEVEL=info
 ENV KCD_TARGETDIR=/tmp/kcdump
 
 ENTRYPOINT ["/bin/kcdump"]
