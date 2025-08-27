@@ -30,14 +30,7 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
 
 ENV KCDUMP_DIR=/tmp/kcdump
 
-ENTRYPOINT \
-  inotifywait -q -m -r -e create \
-  --format '%T inotifywait %e %w%f' --timefmt '%Y-%m-%d %H:%M:%S' \
-  $KCDUMP_DIR | while read line; do \
-    echo $line; \
-    psql -c "select load_cluster_data('${KCDUMP_DIR}')"; \
-  done & \
-  postgres
+ENTRYPOINT postgres
 
 
 
