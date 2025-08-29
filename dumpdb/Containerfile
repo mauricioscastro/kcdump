@@ -24,6 +24,7 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
     psql -f dumpdb-init.sql && \
     pg_ctl stop && \
     sed -ie 's;host  *all  *all  *::1/128.*;host    all             all             0.0.0.0/0               trust;g' /var/lib/pgsql/pgdata/pg_hba.conf  && \
+    echo "host    all             all             ::1/128                 trust" >> /var/lib/pgsql/pgdata/pg_hba.conf  && \
     echo "listen_addresses = '*'" >> /var/lib/pgsql/pgdata/postgresql.conf && \
     sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf && \
     mkdir /tmp/kcdump && \
