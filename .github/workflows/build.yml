@@ -45,7 +45,7 @@ jobs:
         short=`echo "${{ github.sha }}" | cut -c 1-7`
         tag="${short}-${build_date}"
 
-        podman login -u=$PODMAN_USR -p=${{ secrets.KCDUMP_DUMPDB_ROBOT_ON_QUAY }} quay.io
+        podman login -u="$PODMAN_USR" -p="${{ secrets.KCDUMP_DUMPDB_ROBOT_ON_QUAY }}" quay.io
         
         podman build . -t $IMG_KCDUMP:$tag
         podman push $IMG_KCDUMP:$tag

@@ -11,7 +11,10 @@ RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch
     dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf install -y postgresql17-plpython3 && \
     dnf install -y postgresql17-server && \
-    dnf install -y python3-yaml
+    dnf install -y python3-yaml 
+    # && \
+    # usermod -u 1001 postgres && \
+    # chown -R 1001:0 /var/lib/pgsql
 
 COPY dumpdb-init.sql /var/lib/pgsql/
 
@@ -29,6 +32,15 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
     sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf && \
     mkdir /tmp/kcdump && \
     chmod 777 /tmp/kcdump
+
+USER 0
+RUN groupmod -g 1001 postgres && \
+    usermod -u 1001 -g 1001 postgres && \
+    chown -R 1001:1001 /var/lib/pgsql && \
+    chown -R 1001:1001 /run/postgresql
+
+USER postgres
+WORKDIR /var/lib/pgsql
 
 ENV KCDUMP_DIR=/tmp/kcdump
 
