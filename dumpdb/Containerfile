@@ -37,7 +37,8 @@ USER 0
 RUN groupmod -g 1001 postgres && \
     usermod -u 1001 -g 1001 postgres && \
     chown -R 1001:1001 /var/lib/pgsql && \
-    chown -R 1001:1001 /run/postgresql
+    chown -R 1001:1001 /run/postgresql && \
+    chown -R 1001:1001 /tmp/kcdump
 
 USER postgres
 WORKDIR /var/lib/pgsql
