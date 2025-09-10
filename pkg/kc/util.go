@@ -73,7 +73,7 @@ func (kc *kc) ApiResources() (string, error) {
 	var kcList []Kc
 	var wg sync.WaitGroup
 	for _, api := range apisList {
-		_kc := NewKc()
+		_kc := kc.shallowCopy()
 		wg.Add(1)
 		go func(api string) {
 			defer wg.Done()
@@ -210,7 +210,7 @@ func (kc *kc) Dump(path string,
 		if bigSizedReplyChunkSize, isBig := syncChunkMap[name+"."+gv]; isBig {
 			chunkSize = bigSizedReplyChunkSize
 			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
-			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
+			kc.writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 			logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
 			apiList = slices.Delete(apiList, i, i+1)
 		}
@@ -233,7 +233,7 @@ func (kc *kc) Dump(path string,
 		wg.BlockAdd()
 		go func() {
 			defer wg.Done()
-			writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
+			kc.shallowCopy().writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 		}()
 	}
 	wg.Wait()
@@ -496,12 +496,11 @@ func getApiAvailableListQueryValues(kcVer string, listEntry string) (string, str
 	return name, gv, namespaced, baseName
 }
 
-func writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error {
+func (kc *kc) writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error {
 	if progress != nil {
 		defer progress()
 	}
 	logLine := fmt.Sprintf("writeResourceList: baseName=%s name=%s gv=%s namespaced=%t", baseName, name, gv, namespaced)
-	kc := NewKc()
 	gvName := strings.ReplaceAll(gv, "/", "_")
 	gvName = strings.ReplaceAll(gvName, ".", "_")
 	fileName := name + "." + gvName + ".yaml"

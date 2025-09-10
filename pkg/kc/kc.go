@@ -141,7 +141,9 @@ type (
 		setCert(cert []byte, key []byte)
 		send(method string, apiCall string, body string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
+		writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error
 		GetApiResourceNameNamespacedFromGvk(gv string, k string) (string, string, error)
+		shallowCopy() Kc
 	}
 
 	kc struct {
@@ -158,6 +160,7 @@ type (
 		ddPath      string
 		transformer ResponseTransformer
 		cert        tls.Certificate
+		token       string
 	}
 	// Optional transformer function to Get methods
 	// should return ('transformed response', 'transformed error')
@@ -216,6 +219,7 @@ func NewKcWithConfig(config string) Kc {
 
 func NewKcWithConfigContext(config string, context string) Kc {
 	logger.Debug("context " + context)
+	logger.Debug("config=" + config)
 	kcfg, err := os.ReadFile(config)
 	if err != nil {
 		if len(kubeConfigFromStdin) == 0 {
@@ -339,6 +343,16 @@ func newKc() Kc {
 	return &kc
 }
 
+func (kc *kc) shallowCopy() Kc {
+	if len(kc.cert.Certificate) > 0 {
+		return newKc().SetCluster(kc.cluster).SetCert(kc.cert)
+	}
+	if kc.token != "" {
+		return newKc().SetCluster(kc.cluster).SetToken(kc.token)
+	}
+	return nil
+}
+
 func (kc *kc) SetCluster(cluster string) Kc {
 	kc.cluster = cluster
 	kc.client.SetBaseURL(kc.cluster)
@@ -351,6 +365,7 @@ func (kc *kc) Cluster() string {
 }
 
 func (kc *kc) SetToken(token string) Kc {
+	kc.token = token
 	kc.client.SetAuthToken(token)
 	return kc
 }
