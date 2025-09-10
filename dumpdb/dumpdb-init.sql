@@ -25,7 +25,8 @@ import os
 try:
     os.remove(file_path)
 except Exception as e:
-    pass    
+    print(f"Error removing file {file_path}: {str(e)}")
+    pass
 print('removed file: ' + file_path)
 $$;
 
