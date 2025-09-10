@@ -51,7 +51,6 @@ jobs:
         podman push $IMG_KCDUMP:$tag
         podman push $IMG_KCDUMP:$tag $IMG_KCDUMP:latest
 
-        cd dumpdb
-        podman build . -t $IMG_DUMPDB:$tag
+        podman build . -f Containerfile-dumpdb -t $IMG_DUMPDB:$tag
         podman push $IMG_DUMPDB:$tag
         podman push $IMG_DUMPDB:$tag $IMG_DUMPDB:latest

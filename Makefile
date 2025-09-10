@@ -1,7 +1,7 @@
 # Image URL to use all building/pushing image targets
 IMG ?= kcdump:latest
 CONTAINER_FILE ?= Containerfile
-BUILD_DIR ?= .
+# BUILD_DIR ?= .
 
 #make IMG=quay.io/hcreport/kcdump container-build
 #make IMG=quay.io/hcreport/kcdump container-push
@@ -75,7 +75,7 @@ build: fmt vet ## Build manager binary.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: container-build
 container-build: test ## Build docker image with the manager.
-	cd ${BUILD_DIR}; $(CONTAINER_TOOL) build -f ${CONTAINER_FILE} -t ${IMG}
+	@$(CONTAINER_TOOL) build -f ${CONTAINER_FILE} -t ${IMG}
 
 .PHONY: container-push
 container-push: ## Push docker image with the manager.

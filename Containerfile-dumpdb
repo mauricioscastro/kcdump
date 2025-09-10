@@ -1,3 +1,15 @@
+FROM golang:1.25.0 as builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+COPY pkg/ pkg/
+COPY cmd/main.go cmd/main.go
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go
+
 from registry.access.redhat.com/ubi10/ubi:10.0-1754586730
 
 ENV PGDATA=/var/lib/pgsql/pgdata 
@@ -13,7 +25,8 @@ RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch
     dnf install -y postgresql17-server && \
     dnf install -y python3-yaml 
 
-COPY dumpdb-init.sql /var/lib/pgsql/
+COPY --from=builder /workspace/kcdump /bin/
+COPY dumpdb/dumpdb-init.sql /var/lib/pgsql/
 
 USER postgres
 WORKDIR /var/lib/pgsql
@@ -40,7 +53,7 @@ RUN groupmod -g 1001 postgres && \
 USER postgres
 WORKDIR /var/lib/pgsql
 
-ENV KCDUMP_DIR=/tmp/kcdump
+ENV KCD_TARGETDIR=/tmp/kcdump
 
 ENTRYPOINT postgres
 
