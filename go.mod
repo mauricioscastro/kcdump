@@ -1,6 +1,6 @@
 module github.com/mauricioscastro/kcdump
 
-go 1.24.5
+go 1.25.0
 
 require (
 	github.com/coreybutler/go-fsutil v1.2.1

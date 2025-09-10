@@ -146,6 +146,7 @@ func (kc *kc) Dump(path string,
 	copyToPod string,
 	filename string,
 	tailLines int,
+	ignoreWorkerErrors bool,
 	progress func()) error {
 	if !slices.Contains([]int{YAML, JSON, JSON_LINES, JSON_LINES_WRAPPED, JSON_PRETTY}, format) {
 		return fmt.Errorf("unknown format")
@@ -277,7 +278,10 @@ func (kc *kc) Dump(path string,
 			collectedErrors.WriteString("\n")
 		}
 		if collectedErrors.Len() > 0 {
-			return errors.New(collectedErrors.String())
+			logger.Error("dump finished with errors:\n" + collectedErrors.String())
+			if !ignoreWorkerErrors {
+				return errors.New(collectedErrors.String())
+			}
 		}
 	}
 	logger.Info("finished dumping cluster " + kc.cluster + " using " + size)
@@ -540,12 +544,18 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 			logger.Debug("Eval2Int get api chunk "+logLine, zap.Error(err))
 			remainingItemCount = 0
 		}
+		logger.Info("got chunk "+logLine, zap.String("continue", continueToken), zap.Int("remainingItemCount", remainingItemCount))
 		if apiResources, err = cleanApiResourcesChunk(apiResources, name, gv, nsExclusionList, format); err != nil {
 			return writeResourceListLog("cleanApiResourcesChunk "+logLine, err)
 		}
 		if len(apiResources) > 0 {
 			if listKind == "" {
 				if listKind, err = yq(".kind", apiResources); err != nil {
+					if name == "packagemanifests" && gv == "packages.operators.coreos.com/v1" {
+						// logger.Error("===============================================")
+						// logger.Error("apiResources:\n" + apiResources)
+						// logger.Error("===============================================")
+					}
 					return writeResourceListLog("get chunk list kind "+logLine, err)
 				}
 			}

@@ -43,31 +43,32 @@ var (
 	gvkCounter atomic.Int32
 
 	// cli dump options
-	home             string
-	gzip             bool
-	tgz              bool
-	prune            bool
-	ns               bool
-	splitns          bool
-	splitgv          bool
-	gvk              bool
-	xns              []string
-	xgvk             []string
-	syncChunkMap     map[string]int
-	asyncChunkMap    map[string]int
-	targetDir        string
-	format           string
-	escapeJson       bool
-	kubeconfig       string
-	context          string
-	logLevel         string
-	asyncWorkers     int
-	defaultChunkSize int
-	config           string
-	copyToPod        string
-	filename         string
-	tailLines        int
-	showProgress     bool
+	home               string
+	gzip               bool
+	tgz                bool
+	prune              bool
+	ns                 bool
+	splitns            bool
+	splitgv            bool
+	gvk                bool
+	xns                []string
+	xgvk               []string
+	syncChunkMap       map[string]int
+	asyncChunkMap      map[string]int
+	targetDir          string
+	format             string
+	escapeJson         bool
+	kubeconfig         string
+	context            string
+	logLevel           string
+	asyncWorkers       int
+	defaultChunkSize   int
+	config             string
+	copyToPod          string
+	filename           string
+	tailLines          int
+	ignoreWorkerErrors bool
+	showProgress       bool
 )
 
 func init() {
@@ -128,6 +129,7 @@ func main() {
 	pflag.StringVar(&copyToPod, "copy-to-pod", "", "if the result of the dump is a file. a gziped json lines or a tar gziped group of directories, copy this result into the given container described as 'namespace/pod/container:/absolute_path_to_destination_file'. pod can be a substring of the target pod for which the first replica found will be used and container can be omitted for which the first container found in the pod manifest will be used. if file path ends with a '/' it will be considered a directory and source file will be copied into it. if file path is omitted all together the file will copied to '/tmp'. if namespace is omitted and running from inside a cluster '/var/run/secrets/kubernetes.io/serviceaccount/namespace' is used")
 	pflag.StringVar(&filename, "name", "", "if informed this will the name of the resulting directory, gziped or tar gziped file.")
 	pflag.IntVar(&tailLines, "tail-log-lines", 0, "number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)")
+	pflag.BoolVar(&ignoreWorkerErrors, "ignore-worker-errors", true, "ignore errors from worker go routines during resources processing. errors will be logged in error level")
 	pflag.BoolVar(&showProgress, "show-progress", false, "show percentage completed in stdout")
 	pflag.Parse()
 
@@ -257,6 +259,7 @@ func dump() int {
 		copyToPod,
 		filename,
 		tailLines,
+		ignoreWorkerErrors,
 		progress); e != nil {
 		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 9
@@ -286,6 +289,7 @@ func optionsFromViper() error {
 	asyncWorkers = viper.GetInt("async-workers")
 	defaultChunkSize = viper.GetInt("default-chunk-size")
 	tailLines = viper.GetInt("tail-log-lines")
+	ignoreWorkerErrors = viper.GetBool("ignore-worker-errors")
 	showProgress = viper.GetBool("show-progress")
 	if syncChunkMap, err = getStringMapInt(viper.Get("sync-chunk-map")); err != nil {
 		return err

@@ -24,6 +24,8 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--gzip` gzip output (default true)
 
+`--ignore-worker-errors` ignore errors from worker go routines during resources processing. errors will be logged in error level (default true)
+
 `--kubeconfig` kubeconfig file or read from stdin. (default "USER_HOME/.kube/config")
 
 `--loglevel` goes to stderr. use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "error")
@@ -42,7 +44,7 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--sns, --split-namespaces` split namespaced items into directories with their namespace name (default false)
 
-`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
+`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1])
 
 `--tail-log-lines` number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)
 
