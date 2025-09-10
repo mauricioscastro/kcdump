@@ -92,6 +92,10 @@ func init() {
 		"events.v1":               100,
 		"events.events.k8s.io/v1": 100,
 	}
+	// exclude package manifests by default
+	// apparently their list won't be served in chunks for some Openshift versions
+	// and they do not serve much purpose for reports
+	xgvk = []string{"packages.operators.coreos.com/v1:PackageManifest"}
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -114,7 +118,7 @@ func main() {
 	pflag.BoolVar(&splitns, "sns", false, "split namespaced items into directories with their namespace name (default false)")
 	pflag.BoolVar(&splitgv, "sgv", false, "split groupVersion in separate files. when false: will force --sns=false, only accepts --format 'yaml' or 'json_lines'. ignores --tgz.")
 	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma --xns "open-.*,kube.*"`)
-	pflag.StringSliceVar(&xgvk, "xgvk", []string{}, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
+	pflag.StringSliceVar(&xgvk, "xgvk", xgvk, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	pflag.StringVar(&targetDir, "targetdir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
 	pflag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
 	pflag.BoolVar(&escapeJson, "escapejson", true, "escape Json encoded strings. for some k8s resources , Json encoded content can be found inside values of certain keys and this would break the db bulk load process for a json column. this will render an invalid json document since it's going to have its strings doubly escaped if special chars are found, \\t \\n ...")
@@ -227,13 +231,14 @@ func dump() int {
 		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 4
 	}
-	g, e = Kc.FilterApiResources(g, xgvk, outputfmt)
+	g, e = Kc.FilterApiResources(g, xgvk, Kc.YAML)
 	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 5
 	}
 	g, e = yjq.YqEval(`with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | [.name + "," + .groupVersion + "," + .kind] | .[]`, g)
 	if e != nil {
-		fmt.Fprintf(os.Stderr, "%s", e.Error())
+		fmt.Fprintf(os.Stderr, "%s\n", e.Error())
 		return 6
 	}
 	if gvk {

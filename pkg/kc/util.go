@@ -544,18 +544,12 @@ func writeResourceList(path string, baseName string, name string, gv string, nam
 			logger.Debug("Eval2Int get api chunk "+logLine, zap.Error(err))
 			remainingItemCount = 0
 		}
-		logger.Info("got chunk "+logLine, zap.String("continue", continueToken), zap.Int("remainingItemCount", remainingItemCount))
 		if apiResources, err = cleanApiResourcesChunk(apiResources, name, gv, nsExclusionList, format); err != nil {
 			return writeResourceListLog("cleanApiResourcesChunk "+logLine, err)
 		}
 		if len(apiResources) > 0 {
 			if listKind == "" {
 				if listKind, err = yq(".kind", apiResources); err != nil {
-					if name == "packagemanifests" && gv == "packages.operators.coreos.com/v1" {
-						// logger.Error("===============================================")
-						// logger.Error("apiResources:\n" + apiResources)
-						// logger.Error("===============================================")
-					}
 					return writeResourceListLog("get chunk list kind "+logLine, err)
 				}
 			}
@@ -1053,6 +1047,9 @@ func FilterApiResources(apis string, gvkExclusionList []string, format int) (str
 		if len(r[1]) == 0 {
 			r[1] = ".*"
 		}
+		// fmt.Fprint(os.Stdout, apis)
+		logger.Sugar().Debug(fmt.Sprintf("excluding gvk: %s", r))
+		logger.Debug(fmt.Sprintf(`del(.items[] | select(.groupVersion | test("%s") and .kind | test("%s")))`, r[0], r[1]))
 		filteredApis, err = yq(`del(.items[] | select(.groupVersion | test("%s") and .kind | test("%s")))`, filteredApis, r[0], r[1])
 		if err != nil {
 			return apis, err
