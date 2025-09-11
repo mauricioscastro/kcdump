@@ -123,7 +123,7 @@ begin
                            api_k = replace(_ ->> 'kind', 'List', '')
         where api_name is null and id is null;
 
-        perform rm_file(cdata.data_file);
+        -- perform rm_file(cdata.data_file);
         select text(FLOOR(EXTRACT(EPOCH FROM NOW()))::BIGINT) into kcdump_load_time;   
         raise notice '% loaded %', cdata.filename, kcdump_load_time;
     end loop;
