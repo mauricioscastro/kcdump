@@ -54,10 +54,13 @@ USER postgres
 WORKDIR /var/lib/pgsql
 
 ENV KCD_TARGETDIR=/tmp/kcdump
+ENV DUMP_AND_LOAD=false
 
-ENTRYPOINT postgres
-
-
-
+ENTRYPOINT \
+    if [ "$DUMP_AND_LOAD" = "true" ]; then \
+        kcdump; \
+        (sleep 3; psql -c "select load_cluster_data('/tmp/kcdump')") & \
+    fi; \
+    postgres
 
 
