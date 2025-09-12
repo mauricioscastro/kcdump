@@ -128,7 +128,7 @@ begin
         raise notice '% loaded %', cdata.filename, kcdump_load_time;
     end loop;
 
-    create index if not exists cluster_id_gv_name on cluster (id, api_name, api_gv);
+    create index if not exists dump_id_gv_name on cluster (id, api_name, api_gv);
     create index if not exists cluster_k on cluster (api_k);
 
     --
@@ -137,7 +137,7 @@ begin
     drop table if exists apiresources;
     create table apiresources as 
         select 
-            c.id cluster_id, 
+            c.id dump_id, 
             '' api_id,
             a.*
             from cluster c, json_table (_, '$.items[*]' 
@@ -195,7 +195,7 @@ begin
 
     update apiresources set api_id = REGEXP_REPLACE(replace(api_gv, '.','_'), '\/.*$','') where api_id = '';
 
-    create index if not exists apiresources_clnamegv on apiresources (cluster_id, api_name, api_gv);
+    create index if not exists apiresources_clnamegv on apiresources (dump_id, api_name, api_gv);
     create index if not exists apiresources_k on apiresources (api_k);
     create index if not exists apiresources_pk on apiresources (api_id);
 
@@ -210,7 +210,7 @@ begin
 
     create materialized view if not exists versions as
     select
-        id                      cluster_id,
+        id                      dump_id,
         _ ->> 'dumpDate'        dump_date,
         _ ->> 'major'           major,
         _ ->> 'minor'           minor,
@@ -228,7 +228,7 @@ begin
     --
     create materialized view if not exists resources as
     select 
-        id cluster_id,
+        id dump_id,
         api_id, 
         api_gv gv, 
         api_k kind,
@@ -237,7 +237,7 @@ begin
         jp(_, '$.items[*]') _
     from cluster where api_id not in ('apiresources', 'versions', 'namespaces');
 
-    create index if not exists resources_cluster_id on resources (cluster_id);
+    create index if not exists resources_dump_id on resources (dump_id);
     create index if not exists resources_api_id on resources (api_id);
     create index if not exists resources_name on resources (name);
     create index if not exists resources_namespace on resources (namespace);
@@ -252,26 +252,26 @@ begin
     --     if apir.namespaced then
     --         execute format('
     --         create materialized view if not exists %s as
-    --         select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
+    --         select c.id dump_id, c.api_name, c.api_gv gv, c.api_k kind,
     --                jp(c._, ''$.items[*].metadata.name'')->>0 name,
     --                jp(c._, ''$.items[*].metadata.namespace'')->>0 namespace,
     --                jp(c._, ''$.items[*]'') _
     --                from cluster c
     --         where c.api_id=''%s'';
     --         ', apir.api_id, apir.api_id);
-    --         execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_clapinamegv on %s (dump_id, api_name, gv);', apir.api_id, apir.api_id);
     --         execute format ('create index if not exists %s_namens on %s (name, namespace);',apir.api_id, apir.api_id);
     --         execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
     --     else
     --         execute format('
     --         create materialized view if not exists %s as
-    --         select c.id cluster_id, c.api_name, c.api_gv gv, c.api_k kind,
+    --         select c.id dump_id, c.api_name, c.api_gv gv, c.api_k kind,
     --                jp(c._, ''$.items[*].metadata.name'')->>0 name,
     --                jp(c._, ''$.items[*]'') _
     --                from cluster c
     --         where c.api_id=''%s'';
     --         ', apir.api_id, apir.api_id);
-    --         execute format ('create index if not exists %s_clapinamegv on %s (cluster_id, api_name, gv);', apir.api_id, apir.api_id);
+    --         execute format ('create index if not exists %s_clapinamegv on %s (dump_id, api_name, gv);', apir.api_id, apir.api_id);
     --         execute format ('create index if not exists %s_name on %s (name);', apir.api_id, apir.api_id);
     --         execute format ('create index if not exists %s_k on %s (kind);', apir.api_id, apir.api_id);
     --     end if;

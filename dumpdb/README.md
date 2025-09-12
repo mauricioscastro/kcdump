@@ -12,7 +12,7 @@ Having loaded the cluster data you will be able to issue queries like:
 
 ```sql
 select 
-       cluster_id,
+       dump_id,
        name,
        namespace,
        jp(_, '$.spec.containers[*].resources')      resources,

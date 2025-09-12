@@ -59,7 +59,7 @@ ENV DUMP_AND_LOAD=false
 ENTRYPOINT \
     if [ "$DUMP_AND_LOAD" = "true" ]; then \
         kcdump; \
-        (sleep 3; psql -c "select load_cluster_data('/tmp/kcdump')") & \
+        (sleep 5; psql -c "select load_cluster_data('/tmp/kcdump')") & \
     fi; \
     postgres
 
