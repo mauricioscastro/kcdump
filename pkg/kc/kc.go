@@ -943,13 +943,6 @@ func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCrea
 	if kc.readOnly {
 		return "", errors.New("trying to modify resources in read only mode")
 	}
-	if len(namespaces) == 0 {
-		ns, e := fsutil.ReadTextFile(currentNamespace)
-		if e != nil {
-			return "", e
-		}
-		namespaces = []string{ns}
-	}
 	var errList, respList strings.Builder
 	for docIndex := 0; ; docIndex++ {
 		yamlDoc, err := yjq.YqEval("select(di==%d)", yamlManifest, docIndex)
@@ -1034,9 +1027,12 @@ func getApiUrlListForNs(kc *kc, apiCall string, gv string, apiResourceName strin
 		namespaces = []string{nsFromDoc}
 	} else {
 		if len(namespaces) == 0 {
-			return []string{}, errors.New("no namespace specified") // use default? no
-		}
-		if namespaces[0] == "*" {
+			ns, e := fsutil.ReadTextFile(currentNamespace)
+			if e != nil {
+				return []string{}, errors.New("no namespace specified and current namespace could not be read from " + currentNamespace)
+			}
+			namespaces = []string{ns}
+		} else if namespaces[0] == "*" {
 			all, err := kc.NsNames()
 			if err != nil {
 				return []string{}, err
