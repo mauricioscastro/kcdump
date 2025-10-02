@@ -1139,22 +1139,22 @@ func (kc *kc) send(method string, apiCall string, yamlBody string) (string, erro
 		res *resty.Response
 		req = kc.client.SetHeader("Accept", kc.accept).R()
 	)
-	switch {
-	case method == http.MethodPatch:
+	switch method {
+	case http.MethodPatch:
 		res, kc.err = req.
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetQueryParam("fieldValidation", "Ignore").
 			SetHeader("Content-Type", "application/apply-patch+yaml").
 			Patch(apiCall)
-	case method == http.MethodPost:
+	case http.MethodPost:
 		res, kc.err = req.
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetQueryParam("fieldValidation", "Ignore").
 			SetHeader("Content-Type", "application/yaml").
 			Post(apiCall)
-	case method == http.MethodPut:
+	case http.MethodPut:
 		yamlBody, kc.err = kc.setResourceVersion(apiCall, yamlBody)
 		if kc.err == nil {
 			res, kc.err = req.
