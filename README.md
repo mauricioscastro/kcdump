@@ -1,7 +1,7 @@
 # kcdump
 ### A k8s cluster dumper
 
-This comes from [a operator I am building to pull reports from k8s clusters](https://github.com/mauricioscastro/hcreport/tree/dev) and it ended up as a reasonable command line binary executable so I decided to put it apart here. 
+This comes from [a operator I am building to pull reports from k8s clusters](https://github.com/mauricioscastro/hcreport) and it ended up as a reasonable command line binary executable so I decided to put it apart here. 
 
 ```bash
 > kcdump -h
