@@ -56,6 +56,8 @@ WORKDIR /var/lib/pgsql
 ENV KCD_TARGETDIR=/tmp/kcdump
 ENV DUMP_AND_LOAD=false
 
+EXPOSE 5432
+
 ENTRYPOINT \
     if [ "$DUMP_AND_LOAD" = "true" ]; then \
         kcdump; \
