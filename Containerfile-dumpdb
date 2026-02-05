@@ -54,6 +54,7 @@ USER postgres
 WORKDIR /var/lib/pgsql
 
 ENV KCD_TARGETDIR=/tmp/kcdump
+ENV KCD_LOGLEVEL=info
 ENV DUMP_AND_LOAD=false
 
 EXPOSE 5432
