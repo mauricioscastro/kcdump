@@ -36,6 +36,10 @@ const (
 	queryContextForUserAuth  = `(%s as $c | .contexts[] | select (.name == $c)).context as $ctx | $ctx | parent | parent | parent | .users[] | select(.name == $ctx.user) | .user.%s`
 	createModifierExtraParam = "?modifier_removed_name="
 	currentNamespace         = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+	contentTypePost          = "application/yaml"
+	contentTypePut           = "application/yaml"
+	contentTypePatch         = "application/apply-patch+yaml"
+	contentTypePatchMerge    = "application/strategic-merge-patch+json"
 )
 
 var (
@@ -73,6 +77,9 @@ type (
 		Delete(yamlManifest string, ignoreNotFound bool, namespaces ...string) (string, error)
 		delete(apiCall string, ignoreNotFound bool) (string, error)
 		deleteModifier(apiUrl string, not_used string, ignoreNotFound bool) (string, error)
+
+		Patch(yamlManifest string, namespaces ...string) (string, error)
+		patch(apiCall string, body string, ignored bool) (string, error)
 
 		modify(modifier modifier, yamlManifest string, ignoreNotFound bool, isCreating bool, namespaces ...string) (string, error)
 
@@ -139,7 +146,7 @@ type (
 			ignoreWorkerErrors bool,
 			progress func()) error
 		setCert(cert []byte, key []byte)
-		send(method string, apiCall string, body string) (string, error)
+		send(method string, apiCall string, body string, contentType string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
 		writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error
 		GetApiResourceNameNamespacedFromGvk(gv string, k string) (string, string, error)
@@ -867,7 +874,7 @@ func (kc *kc) Apply(yamlManifest string, namespaces ...string) (string, error) {
 
 func (kc *kc) applyModifier(apiUrl string, body string, not_used bool) (string, error) {
 	logger.Debug("apply", zap.String("apiCall", apiUrl))
-	return kc.send(http.MethodPatch, apiUrl, body)
+	return kc.send(http.MethodPatch, apiUrl, body, contentTypePatch)
 }
 
 func (kc *kc) create(apiCall string, body string, applyIfFound bool) (string, error) {
@@ -878,7 +885,7 @@ func (kc *kc) create(apiCall string, body string, applyIfFound bool) (string, er
 		_, e := kc.Get(_apiCall)
 		if e == nil {
 			logger.Sugar().Infof("tried to create already existing resource %s. will apply instead", apiCall)
-			return kc.send(http.MethodPatch, _apiCall, body)
+			return kc.send(http.MethodPatch, _apiCall, body, contentTypePatch)
 		}
 	}
 	// remove extra param from url if it comes from modifier
@@ -886,11 +893,31 @@ func (kc *kc) create(apiCall string, body string, applyIfFound bool) (string, er
 		apiCall = apiCall[0:strings.Index(apiCall, createModifierExtraParam)]
 		logger.Debug("create new apiCall", zap.String("apiCall", apiCall))
 	}
-	return kc.send(http.MethodPost, apiCall, body)
+	return kc.send(http.MethodPost, apiCall, body, contentTypePost)
 }
 
 func (kc *kc) Create(yamlManifest string, applyIfFound bool, namespaces ...string) (string, error) {
 	return kc.modify(kc.create, yamlManifest, applyIfFound, true, namespaces...)
+}
+
+func (kc *kc) patch(apiCall string, body string, ignored bool) (string, error) {
+	logger.Debug("patch", zap.String("apiCall", apiCall))
+	// need to re-add the name to the url if it comes from modifier
+	_apiCall := strings.Replace(apiCall, createModifierExtraParam, "/", 1)
+	r, e := kc.Get(_apiCall)
+	if e != nil {
+		return r, e
+	}
+	// // remove extra param from url if it comes from modifier
+	// if strings.Contains(apiCall, createModifierExtraParam) {
+	// 	apiCall = apiCall[0:strings.Index(apiCall, createModifierExtraParam)]
+	// }
+	logger.Debug("patch apiCall", zap.String("apiCall", _apiCall), zap.String("body", body))
+	return kc.send(http.MethodPatch, _apiCall, body, contentTypePatchMerge)
+}
+
+func (kc *kc) Patch(jsonPatch string, namespaces ...string) (string, error) {
+	return kc.modify(kc.patch, jsonPatch, true, true, namespaces...)
 }
 
 func (kc *kc) Replace(yamlManifest string, applyIfNotFound bool, namespaces ...string) (string, error) {
@@ -903,10 +930,10 @@ func (kc *kc) replace(apiCall string, body string, applyIfNotFound bool) (string
 		_, e := kc.Get(apiCall)
 		if e != nil && kc.statusCode == 404 {
 			logger.Sugar().Infof("tried to replace non existent resource %s. will apply instead", apiCall)
-			return kc.send(http.MethodPatch, apiCall, body)
+			return kc.send(http.MethodPatch, apiCall, body, contentTypePatch)
 		}
 	}
-	return kc.send(http.MethodPut, apiCall, body)
+	return kc.send(http.MethodPut, apiCall, body, contentTypePut)
 }
 
 func (kc *kc) delete(apiCall string, ignoreNotFound bool) (string, error) {
@@ -939,13 +966,22 @@ func (kc *kc) deleteModifier(apiCall string, not_used string, ignoreNotFound boo
 	return kc.resp, nil
 }
 
-func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCreating bool, namespaces ...string) (string, error) {
+func (kc *kc) modify(modifier modifier, manifest string, ignore bool, isCreating bool, namespaces ...string) (string, error) {
 	if kc.readOnly {
 		return "", errors.New("trying to modify resources in read only mode")
 	}
+	var bodyIsJson bool = false
+	if checkJSONstrictChars(manifest) {
+		var err error
+		manifest, err = yjq.J2Y(manifest)
+		if err != nil {
+			return "", err
+		}
+		bodyIsJson = true
+	}
 	var errList, respList strings.Builder
 	for docIndex := 0; ; docIndex++ {
-		yamlDoc, err := yjq.YqEval("select(di==%d)", yamlManifest, docIndex)
+		yamlDoc, err := yjq.YqEval("select(di==%d)", manifest, docIndex)
 		if err != nil {
 			respList, errList = updateRespLists("", err, errList, respList, "selecting doc from manifest", docIndex > 0)
 			break
@@ -972,6 +1008,14 @@ func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCrea
 			respList, errList = updateRespLists("", err, errList, respList, "parsing bool for namespaced value", docIndex > 0)
 			continue
 		}
+		body := yamlDoc
+		if bodyIsJson {
+			var e error
+			body, e = yjq.Y2JC(yamlDoc)
+			if e != nil {
+				return "", e
+			}
+		}
 		if !namespaced {
 			apiCall = apiCall + gv + "/" + apirsname
 			if isCreating {
@@ -980,7 +1024,7 @@ func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCrea
 				apiCall = apiCall + "/" + name
 			}
 			logger.Debug("modifying non namespaced url " + apiCall)
-			r, e := modifier(apiCall, yamlDoc, ignore)
+			r, e := modifier(apiCall, body, ignore)
 			respList, errList = updateRespLists(r, e, errList, respList, "non namespaced api "+apiCall, docIndex > 0)
 		} else {
 			urls, err := getApiUrlListForNs(kc, apiCall, gv, apirsname, ns, namespaces)
@@ -994,7 +1038,7 @@ func (kc *kc) modify(modifier modifier, yamlManifest string, ignore bool, isCrea
 					apiUrl = apiUrl + "/" + name
 				}
 				logger.Debug("modifying namespaced url " + apiUrl)
-				resp, err := modifier(apiUrl, yamlDoc, ignore)
+				resp, err := modifier(apiUrl, body, ignore)
 				respList, errList = updateRespLists(resp, err, errList, respList, "namespaced url "+apiUrl, (i > 0 || docIndex > 0))
 			}
 		}
@@ -1131,7 +1175,7 @@ func logResponse(api string, resp *resty.Response) {
 	logger.Debug("http resp", zapFields...)
 }
 
-func (kc *kc) send(method string, apiCall string, yamlBody string) (string, error) {
+func (kc *kc) send(method string, apiCall string, yamlBody string, contentType string) (string, error) {
 	kc.api = apiCall
 	kc.resp = ""
 	kc.err = nil
@@ -1145,21 +1189,21 @@ func (kc *kc) send(method string, apiCall string, yamlBody string) (string, erro
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetQueryParam("fieldValidation", "Ignore").
-			SetHeader("Content-Type", "application/apply-patch+yaml").
+			SetHeader("Content-Type", contentType).
 			Patch(apiCall)
 	case http.MethodPost:
 		res, kc.err = req.
 			SetBody(yamlBody).
 			SetQueryParam("fieldManager", "skc-client-side-apply").
 			SetQueryParam("fieldValidation", "Ignore").
-			SetHeader("Content-Type", "application/yaml").
+			SetHeader("Content-Type", contentType).
 			Post(apiCall)
 	case http.MethodPut:
 		yamlBody, kc.err = kc.setResourceVersion(apiCall, yamlBody)
 		if kc.err == nil {
 			res, kc.err = req.
 				SetBody(yamlBody).
-				SetHeader("Content-Type", "application/yaml").
+				SetHeader("Content-Type", contentType).
 				Put(apiCall)
 		}
 	}
@@ -1198,4 +1242,16 @@ func getGvkNsNameFromYamlDoc(yaml string) (string, string, string, string, error
 		return "", "", "", "", fmt.Errorf("cannot extract groupVersion, kind, namespace, name from yaml document")
 	}
 	return _r[0], _r[1], _r[2], _r[3], nil
+}
+
+func checkJSONstrictChars(str string) bool {
+	str = strings.TrimSpace(str)
+	if str == "" {
+		return false
+	}
+	firstChar := str[0]
+	if firstChar != '{' && firstChar != '[' {
+		return false
+	}
+	return true
 }
