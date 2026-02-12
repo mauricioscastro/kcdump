@@ -908,10 +908,6 @@ func (kc *kc) patch(apiCall string, body string, ignored bool) (string, error) {
 	if e != nil {
 		return r, e
 	}
-	// // remove extra param from url if it comes from modifier
-	// if strings.Contains(apiCall, createModifierExtraParam) {
-	// 	apiCall = apiCall[0:strings.Index(apiCall, createModifierExtraParam)]
-	// }
 	logger.Debug("patch apiCall", zap.String("apiCall", _apiCall), zap.String("body", body))
 	return kc.send(http.MethodPatch, _apiCall, body, contentTypePatchMerge)
 }
