@@ -64,6 +64,7 @@ ENTRYPOINT \
         kcdump; \
         (sleep 5; psql -c "select load_cluster_data('/tmp/kcdump')") & \
     fi; \
+    python3 -m http.server -d /tmp/kcdump 8000 & \
     postgres
 
 
