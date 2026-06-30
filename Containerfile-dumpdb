@@ -10,7 +10,7 @@ COPY cmd/main.go cmd/main.go
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go
 
-from registry.access.redhat.com/ubi10/ubi:10.0-1754586730
+FROM registry.access.redhat.com/ubi10/ubi:10.0-1754586730
 
 ENV PGDATA=/var/lib/pgsql/pgdata 
 ENV POSTGRESQL_USER=postgres 
@@ -58,6 +58,8 @@ ENV KCD_LOGLEVEL=info
 ENV DUMP_AND_LOAD=false
 
 EXPOSE 5432
+
+# miniserve --quiet --hide-version-footer --hide-theme-selector -p 13089 -t "kcdump files" ./
 
 ENTRYPOINT \
     if [ "$DUMP_AND_LOAD" = "true" ]; then \

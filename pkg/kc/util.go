@@ -236,6 +236,7 @@ func (kc *kc) Dump(path string,
 			kc.shallowCopy().writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 		}()
 	}
+	logger.Debug("OUT OF WORKERS LOOP")
 	wg.Wait()
 	// concat chunks
 	if err = joinChunks(path, format, gz); err != nil {
