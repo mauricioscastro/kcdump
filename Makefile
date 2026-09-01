@@ -5,7 +5,7 @@ CONTAINER_FILE ?= Containerfile
 
 #make IMG=quay.io/hcreport/kcdump container-build
 #make IMG=quay.io/hcreport/kcdump container-push
-#make BUILD_DIR=dumpdb IMG=quay.io/hcreport/dumpdb container-build
+#make CONTAINER_FILE=Containerfile-dumpdb IMG=quay.io/hcreport/dumpdb container-build
 #make IMG=quay.io/hcreport/dumpdb container-push
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)

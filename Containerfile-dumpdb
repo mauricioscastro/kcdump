@@ -1,4 +1,4 @@
-FROM golang:1.25.0 as builder
+FROM registry.access.redhat.com/hi/go:latest AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
