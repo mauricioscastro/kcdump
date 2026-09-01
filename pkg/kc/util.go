@@ -130,8 +130,11 @@ func apiResourcesResponseTransformer(kc Kc) (string, error) {
 // progress will be called at the end. You need to add thread safety mechanisms
 // to the code inside progress func().
 func (kc *kc) Dump(path string,
+	nsInclusionList []string,
 	nsExclusionList []string,
+	gvkInclusionList []string,
 	gvkExclusionList []string,
+	namespacedOnly bool,
 	syncChunkMap map[string]int,
 	asyncChunkMap map[string]int,
 	gz bool,
@@ -184,13 +187,13 @@ func (kc *kc) Dump(path string,
 		yq = yjq.YqEvalJ2JC
 	}
 	logger.Debug("retrieve gvk list and write")
-	apis, err := getGroupVersionKind(kc, path, gvkExclusionList, gz, format, escapeEncodedJson)
+	apis, err := getGroupVersionKind(kc, path, gvkInclusionList, gvkExclusionList, namespacedOnly, gz, format, escapeEncodedJson)
 	if err != nil {
 		return err
 	}
 	// retrieve ns list and write
 	logger.Debug("retrieve ns list and write")
-	err = getNs(kc, path, nsExclusionList, gz, format, yq, splitns, nologs, escapeEncodedJson)
+	err = getNs(kc, path, nsInclusionList, nsExclusionList, gz, format, yq, splitns, nologs, escapeEncodedJson)
 	if err != nil {
 		return err
 	}
@@ -210,7 +213,7 @@ func (kc *kc) Dump(path string,
 		if bigSizedReplyChunkSize, isBig := syncChunkMap[name+"."+gv]; isBig {
 			chunkSize = bigSizedReplyChunkSize
 			logger.Info(fmt.Sprintf("%s.%s is considered big and will use chunks of size %d", name, gv, chunkSize))
-			kc.writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
+			kc.writeResourceList(path, baseName, name, gv, namespaced, splitns, nsInclusionList, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 			logger.Info(fmt.Sprintf("%s.%s finished", name, gv))
 			apiList = slices.Delete(apiList, i, i+1)
 		}
@@ -233,7 +236,7 @@ func (kc *kc) Dump(path string,
 		wg.BlockAdd()
 		go func() {
 			defer wg.Done()
-			kc.shallowCopy().writeResourceList(path, baseName, name, gv, namespaced, splitns, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
+			kc.shallowCopy().writeResourceList(path, baseName, name, gv, namespaced, splitns, nsInclusionList, nsExclusionList, nologs, gz, format, chunkSize, escapeEncodedJson, tailLines, progress)
 		}()
 	}
 	logger.Debug("OUT OF WORKERS LOOP")
@@ -395,7 +398,7 @@ func tgzAndPrune(kc *kc, path string, prune bool, copyToPod string, filename str
 	return sz, nil
 }
 
-func getNs(kc *kc, path string, nsExclusionList []string, gz bool, format int, yq yjq.EvalFunc, splitns bool, nologs bool, escapeEncodedJson bool) error {
+func getNs(kc *kc, path string, nsInclusionList []string, nsExclusionList []string, gz bool, format int, yq yjq.EvalFunc, splitns bool, nologs bool, escapeEncodedJson bool) error {
 	ns, err := kc.Ns()
 	if err != nil {
 		return err
@@ -407,7 +410,10 @@ func getNs(kc *kc, path string, nsExclusionList []string, gz bool, format int, y
 			return err
 		}
 	}
-	// filter out ns based on regex list
+	// include first, exclude after
+	if ns, err = IncludeNS(ns, nsInclusionList, format, true); err != nil {
+		return err
+	}
 	if ns, err = FilterNS(ns, nsExclusionList, format, true); err != nil {
 		return err
 	}
@@ -433,7 +439,7 @@ func getNs(kc *kc, path string, nsExclusionList []string, gz bool, format int, y
 	return writeWholeResourceFile(path+"NamespaceList.namespaces."+kc.Version()+".yaml", ns, gz, format, escapeEncodedJson)
 }
 
-func getGroupVersionKind(kc *kc, path string, gvkExclusionList []string, gz bool, format int, escapeEncodedJson bool) (string, error) {
+func getGroupVersionKind(kc *kc, path string, gvkInclusionList []string, gvkExclusionList []string, namespacedOnly bool, gz bool, format int, escapeEncodedJson bool) (string, error) {
 	apis, err := kc.ApiResources()
 	if err != nil {
 		return "", err
@@ -445,8 +451,14 @@ func getGroupVersionKind(kc *kc, path string, gvkExclusionList []string, gz bool
 			return "", err
 		}
 	}
-	// filter out gvk based on regex list
+	// include first, exclude after
+	if apis, err = IncludeApiResources(apis, gvkInclusionList, format); err != nil {
+		return "", err
+	}
 	if apis, err = FilterApiResources(apis, gvkExclusionList, format); err != nil {
+		return "", err
+	}
+	if apis, err = FilterNonNamespaced(apis, namespacedOnly, format); err != nil {
 		return "", err
 	}
 	if err = writeWholeResourceFile(path+"ApiResourcesList.yaml", apis, gz, format, escapeEncodedJson); err != nil {
@@ -497,7 +509,7 @@ func getApiAvailableListQueryValues(kcVer string, listEntry string) (string, str
 	return name, gv, namespaced, baseName
 }
 
-func (kc *kc) writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error {
+func (kc *kc) writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsInclusionList []string, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error {
 	if progress != nil {
 		defer progress()
 	}
@@ -544,7 +556,7 @@ func (kc *kc) writeResourceList(path string, baseName string, name string, gv st
 			logger.Debug("Eval2Int get api chunk "+logLine, zap.Error(err))
 			remainingItemCount = 0
 		}
-		if apiResources, err = cleanApiResourcesChunk(apiResources, name, gv, nsExclusionList, format); err != nil {
+		if apiResources, err = cleanApiResourcesChunk(apiResources, name, gv, nsInclusionList, nsExclusionList, format); err != nil {
 			return writeResourceListLog("cleanApiResourcesChunk "+logLine, err)
 		}
 		if len(apiResources) > 0 {
@@ -698,7 +710,7 @@ func writeTempChunk(path string, content string, separator string) error {
 	return nil
 }
 
-func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclusionList []string, format int) (string, error) {
+func cleanApiResourcesChunk(apiResources string, name string, gv string, nsInclusionList []string, nsExclusionList []string, format int) (string, error) {
 	if len(apiResources) == 0 {
 		return "", nil
 	}
@@ -706,8 +718,13 @@ func cleanApiResourcesChunk(apiResources string, name string, gv string, nsExclu
 		cleanApiResource = apiResources
 		err              error
 	)
+	if nsInclusionList != nil {
+		if cleanApiResource, err = IncludeNS(cleanApiResource, nsInclusionList, format, false); err != nil {
+			return "", err
+		}
+	}
 	if nsExclusionList != nil {
-		if cleanApiResource, err = FilterNS(apiResources, nsExclusionList, format, false); err != nil {
+		if cleanApiResource, err = FilterNS(cleanApiResource, nsExclusionList, format, false); err != nil {
 			return "", err
 		}
 	}
@@ -1026,6 +1043,44 @@ func FormatCodeFromString(format string) (int, error) {
 	}
 }
 
+func FilterNonNamespaced(apis string, namespacedOnly bool, format int) (string, error) {
+	if !namespacedOnly {
+		return apis, nil
+	}
+	yq := yjq.YqEval
+	if format != YAML {
+		yq = yjq.YqEvalJ2JC
+	}
+	return yq(`del(.items[] | select(.namespaced == false))`, apis)
+}
+
+func IncludeApiResources(apis string, gvkInclusionList []string, format int) (string, error) {
+	if len(gvkInclusionList) == 0 {
+		return apis, nil
+	}
+	yq := yjq.YqEval
+	if format != YAML {
+		yq = yjq.YqEvalJ2JC
+	}
+	var conditions []string
+	for _, re := range gvkInclusionList {
+		r := strings.Split(re, ":")
+		if len(r) == 1 {
+			r = append(r, ".*")
+		}
+		if len(r[0]) == 0 {
+			r[0] = ".*"
+		}
+		if len(r[1]) == 0 {
+			r[1] = ".*"
+		}
+		conditions = append(conditions, fmt.Sprintf(`(.groupVersion | test("%s")) and (.kind | test("%s"))`, r[0], r[1]))
+	}
+	expr := fmt.Sprintf(`del(.items[] | select(%s | not))`, strings.Join(conditions, " or "))
+	logger.Debug(fmt.Sprintf("including gvk: %s", expr))
+	return yq(expr, apis)
+}
+
 // TODO: use OR in yq query to avoid loop. not top of the list since filtering is not common
 func FilterApiResources(apis string, gvkExclusionList []string, format int) (string, error) {
 	var (
@@ -1056,6 +1111,22 @@ func FilterApiResources(apis string, gvkExclusionList []string, format int) (str
 		}
 	}
 	return filteredApis, nil
+}
+
+func IncludeNS(apis string, nsInclusionList []string, format int, resourceIsNs bool) (string, error) {
+	if len(nsInclusionList) == 0 {
+		return apis, nil
+	}
+	selectItem := ".metadata.namespace"
+	if resourceIsNs {
+		selectItem = ".metadata.name"
+	}
+	yq := yjq.YqEval
+	if format != YAML {
+		yq = yjq.YqEvalJ2JC
+	}
+	combinedRe := strings.Join(nsInclusionList, "|")
+	return yq(`del(.items[] | select(%s | test("%s") | not))`, apis, selectItem, combinedRe)
 }
 
 // TODO: use OR in yq query to avoid loop. not top of the list since filtering is not common

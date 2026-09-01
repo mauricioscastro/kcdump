@@ -8,6 +8,8 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 ```
 
 ### Options
+`--async-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired in parallel with the desired chunk size. see --default-chunk-size and --async-workers (default [events.v1=100,events.events.k8s.io/v1=100])
+
 `--async-workers` number of group version kind to process in parallel (default 8)
 
 `-f,--config` kcdump config file. command line options have precedence (default "USER_HOME/.kube/kcdump/kcdump.yaml")
@@ -26,11 +28,17 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--ignore-worker-errors` ignore errors from worker go routines during resources processing. errors will be logged in error level (default true)
 
+`--igvk` regex to match and include only wanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --igvk "v1:Pod". can be used multiple times and/or many items separated by comma --igvk "v1:Pod,apps/v1:Deployment". when used, include is applied first, exclude after
+
+`--ins` regex to match and include only wanted namespaces. can be used multiple times and/or many items separated by comma --ins "my-app-.\*,prod-.\*". when used, include is applied first, exclude after
+
 `--kubeconfig` kubeconfig file or read from stdin. (default "USER_HOME/.kube/config")
 
 `--loglevel` goes to stderr. use one of: 'info', 'warn', 'error', 'debug', 'panic', 'fatal' (default "error")
 
 `--name` if informed this will the name of the resulting directory, gziped or tar gziped file.
+
+`--nso` exclude non namespaced (cluster scoped) resources from the result (default false)
 
 `--printgvk` print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)
 
@@ -44,7 +52,7 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--sns, --split-namespaces` split namespaced items into directories with their namespace name (default false)
 
-`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1,configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1])
+`--sync-chunk-map` a map of string to int. name.gv -> list chunk size. for the resources acquired one by one with the desired chunk size before anything else. see --default-chunk-size (default [configmaps.v1=1,packagemanifests.packages.operators.coreos.com/v1=1,apirequestcounts.apiserver.openshift.io/v1=1,customresourcedefinitions.apiextensions.k8s.io/v1=1])
 
 `--tail-log-lines` number of lines to tail the pod's logs. if -1 infinite. 0 = do not get logs (default 0)
 
@@ -52,7 +60,7 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--tgz` a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)
 
-`--xgvk, --exclude-group-version-kind` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*"
+`--xgvk, --exclude-group-version-kind` regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.\*:Pod.\*". can be used multiple times and/or many items separated by comma -xgvk "metrics.\*:Pod.\*,.\*:Event.\*" (default [packages.operators.coreos.com/v1:PackageManifest])
 
 `--xns, --exclude-namespace` regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma --xns "open-.\*,kube.\*"
 

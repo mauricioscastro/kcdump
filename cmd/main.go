@@ -51,7 +51,10 @@ var (
 	splitns            bool
 	splitgv            bool
 	gvk                bool
+	ins                []string
 	xns                []string
+	namespacedOnly     bool
+	igvk               []string
 	xgvk               []string
 	syncChunkMap       map[string]int
 	asyncChunkMap      map[string]int
@@ -117,7 +120,10 @@ func main() {
 	pflag.BoolVar(&gvk, "printgvk", false, "print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)")
 	pflag.BoolVar(&splitns, "sns", false, "split namespaced items into directories with their namespace name (default false)")
 	pflag.BoolVar(&splitgv, "sgv", false, "split groupVersion in separate files. when false: will force --sns=false, only accepts --format 'yaml' or 'json_lines'. ignores --tgz.")
+	pflag.StringSliceVar(&ins, "ins", []string{}, `regex to match and include only wanted namespaces. can be used multiple times and/or many items separated by comma --ins "my-app-.*,prod-.*". when used, include is applied first, exclude after`)
 	pflag.StringSliceVar(&xns, "xns", []string{}, `regex to match and exclude unwanted namespaces. can be used multiple times and/or many items separated by comma --xns "open-.*,kube.*"`)
+	pflag.BoolVar(&namespacedOnly, "nso", false, "exclude non namespaced (cluster scoped) resources from the result (default false)")
+	pflag.StringSliceVar(&igvk, "igvk", []string{}, `regex to match and include only wanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --igvk "v1:Pod". can be used multiple times and/or many items separated by comma --igvk "v1:Pod,apps/v1:Deployment". when used, include is applied first, exclude after`)
 	pflag.StringSliceVar(&xgvk, "xgvk", xgvk, `regex to match and exclude unwanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --xgvk "metrics.*:Pod.*". can be used multiple times and/or many items separated by comma -xgvk "metrics.*:Pod.*,.*:Event.*"`)
 	pflag.StringVar(&targetDir, "targetdir", filepath.FromSlash(home+"/.kube/kcdump"), "target directory where the extracted cluster data goes. directory will be recreated from scratch. a sub directory named 'cluster_info_port' is created inside the targetDir.")
 	pflag.StringVar(&format, "format", "json_lines", "output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'.")
@@ -142,7 +148,10 @@ func main() {
 	viper.SetEnvPrefix("KCD")
 	viper.AutomaticEnv()
 
+	viper.RegisterAlias("include-namespace", "ins")
 	viper.RegisterAlias("exclude-namespace", "xns")
+	viper.RegisterAlias("namespaced-only", "nso")
+	viper.RegisterAlias("include-group-version-kind", "igvk")
 	viper.RegisterAlias("exclude-group-version-kind", "xgvk")
 	viper.RegisterAlias("split-namespaces", "sns")
 	viper.RegisterAlias("split-group-version-kind", "sgv")
@@ -200,7 +209,12 @@ func dump() int {
 			fmt.Fprintf(os.Stderr, "%s", e.Error())
 			return 1
 		}
-		n, e = Kc.FilterNS(n, xns, outputfmt, true)
+		n, e = Kc.IncludeNS(n, ins, Kc.YAML, true)
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "%s", e.Error())
+			return 2
+		}
+		n, e = Kc.FilterNS(n, xns, Kc.YAML, true)
 		if e != nil {
 			fmt.Fprintf(os.Stderr, "%s", e.Error())
 			return 2
@@ -231,7 +245,17 @@ func dump() int {
 		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 4
 	}
+	g, e = Kc.IncludeApiResources(g, igvk, Kc.YAML)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
+		return 5
+	}
 	g, e = Kc.FilterApiResources(g, xgvk, Kc.YAML)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "%s", e.Error())
+		return 5
+	}
+	g, e = Kc.FilterNonNamespaced(g, namespacedOnly, Kc.YAML)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "%s", e.Error())
 		return 5
@@ -248,8 +272,11 @@ func dump() int {
 	totalGvk = len(strings.Split(g, "\n"))
 	if e := kc.Dump(
 		targetDir,
+		ins,
 		xns,
+		igvk,
 		xgvk,
+		namespacedOnly,
 		syncChunkMap,
 		asyncChunkMap,
 		gzip,
@@ -281,7 +308,10 @@ func optionsFromViper() error {
 	splitns = viper.GetBool("sns")
 	splitgv = viper.GetBool("sgv")
 	gvk = viper.GetBool("printgvk")
+	ins = viper.GetStringSlice("ins")
 	xns = viper.GetStringSlice("xns")
+	namespacedOnly = viper.GetBool("nso")
+	igvk = viper.GetStringSlice("igvk")
 	xgvk = viper.GetStringSlice("xgvk")
 	targetDir = viper.GetString("targetdir")
 	format = viper.GetString("format")

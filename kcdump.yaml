@@ -7,6 +7,9 @@ format: yaml
 split-group-version-kind: true
 split-namespaces: true
 tail-lines: -1
+namespaced-only: false
+include-group-version-kind: []
 exclude-group-version-kind: []
+include-namespaces: []
 exclude-namespaces: []
 

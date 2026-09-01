@@ -127,8 +127,11 @@ type (
 		NsNames() ([]string, error)
 		ApiResources() (string, error)
 		Dump(path string,
+			nsInclusionList []string,
 			nsExclusionList []string,
+			gvkInclusionList []string,
 			gvkExclusionList []string,
+			namespacedOnly bool,
 			syncChunkMap map[string]int,
 			asyncChunkMap map[string]int,
 			gz bool,
@@ -148,7 +151,7 @@ type (
 		setCert(cert []byte, key []byte)
 		send(method string, apiCall string, body string, contentType string) (string, error)
 		setResourceVersion(apiCall string, newResource string) (string, error)
-		writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error
+		writeResourceList(path string, baseName string, name string, gv string, namespaced bool, splitns bool, nsInclusionList []string, nsExclusionList []string, nologs bool, gz bool, format int, chunkSize int, escapeEncodedJson bool, tailLines int, progress func()) error
 		GetApiResourceNameNamespacedFromGvk(gv string, k string) (string, string, error)
 		shallowCopy() Kc
 	}

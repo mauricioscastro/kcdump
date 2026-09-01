@@ -59,7 +59,7 @@ ENV DUMP_AND_LOAD=false
 
 EXPOSE 5432
 
-# miniserve --quiet --hide-version-footer --hide-theme-selector -p 13089 -t "kcdump files" ./
+# miniserve --quiet --hide-version-footer --hide-theme-selector -p 8000 -t "kcdump files" /tmp/kcdump
 
 ENTRYPOINT \
     if [ "$DUMP_AND_LOAD" = "true" ]; then \
