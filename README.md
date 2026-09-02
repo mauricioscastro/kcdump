@@ -28,9 +28,9 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--ignore-worker-errors` ignore errors from worker go routines during resources processing. errors will be logged in error level (default true)
 
-`--igvk` regex to match and include only wanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --igvk "v1:Pod". can be used multiple times and/or many items separated by comma --igvk "v1:Pod,apps/v1:Deployment". when used, include is applied first, exclude after
+`--igvk, --include-group-version-kind` regex to match and include only wanted groupVersion and kind. format is 'gv:k' where gv is regex to capture gv and k is regex to capture kind. ex: --igvk "v1:Pod". can be used multiple times and/or many items separated by comma --igvk "v1:Pod,apps/v1:Deployment". when used, include is applied first, exclude after
 
-`--ins` regex to match and include only wanted namespaces. can be used multiple times and/or many items separated by comma --ins "my-app-.\*,prod-.\*". when used, include is applied first, exclude after
+`--ins, --include-namespace` regex to match and include only wanted namespaces. can be used multiple times and/or many items separated by comma --ins "my-app-.\*,prod-.\*". when used, include is applied first, exclude after
 
 `--kubeconfig` kubeconfig file or read from stdin. (default "USER_HOME/.kube/config")
 
