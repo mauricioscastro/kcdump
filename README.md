@@ -38,7 +38,7 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--name` if informed this will the name of the resulting directory, gziped or tar gziped file.
 
-`--nso` exclude non namespaced (cluster scoped) resources from the result (default false)
+`--nso, --namespaced-only` exclude non namespaced (cluster scoped) resources from the result (default false)
 
 `--printgvk` print (filtered or not) name, group version kind with format 'name,gv,k' and exit (default false)
 
