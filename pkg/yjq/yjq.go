@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"strings"
@@ -14,8 +15,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/mikefarah/yq/v4/pkg/yqlib"
-
-	"gopkg.in/op/go-logging.v1"
 )
 
 type EvalFunc func(string, string, ...any) (string, error)
@@ -42,9 +41,7 @@ var (
 )
 
 func SilenceYqLogs() {
-	bke := logging.NewLogBackend(io.Discard, "", 0)
-	bkel := logging.AddModuleLevel(bke)
-	yqlib.GetLogger().SetBackend(bkel)
+	yqlib.GetLogger().SetSlogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func Y2JC(yaml string) (string, error) {

@@ -10,23 +10,31 @@ COPY cmd/main.go cmd/main.go
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go
 
-FROM registry.access.redhat.com/ubi10/ubi:10.0-1754586730
+FROM docker.io/svenstaro/miniserve:latest as miniserve
+
+FROM registry.access.redhat.com/hi/python:3.14-builder
+
+USER 0
 
 ENV PGDATA=/var/lib/pgsql/pgdata 
 ENV POSTGRESQL_USER=postgres 
 ENV POSTGRESQL_PASSWORD=postgres 
 ENV POSTGRESQL_DATABASE=postgres
-ENV PATH="$PATH:/usr/pgsql-17/bin"
 
-RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm && \
-    dnf install -y inotify-tools && \
-    dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
-    dnf install -y postgresql17-plpython3 && \
-    dnf install -y postgresql17-server && \
-    dnf install -y python3-yaml 
+RUN dnf install -y postgresql postgresql-devel postgresql-plpython3 python3-yaml && \
+    mkdir -p /var/run/postgresql && \
+    groupmod -g 999 postgres && \
+    usermod -u 999 -g 999 postgres && \
+    chown -R 999:999 /usr/lib64/pgsql && \
+    chown -R 999:999 /var/run/postgresql && \
+    chown -R 999:999 /var/lib/pgsql && \
+    mkdir /tmp/kcdump && \
+    chmod -R 777 /tmp/kcdump        
 
 COPY --from=builder /workspace/kcdump /bin/
+COPY --from=miniserve /app/miniserve /bin/
 COPY dumpdb/dumpdb-init.sql /var/lib/pgsql/
+COPY dumpdb/entrypoint.py /var/lib/pgsql/
 
 USER postgres
 WORKDIR /var/lib/pgsql
@@ -39,16 +47,11 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
     sed -ie 's;host  *all  *all  *::1/128.*;host    all             all             0.0.0.0/0               trust;g' /var/lib/pgsql/pgdata/pg_hba.conf  && \
     echo "host    all             all             ::1/128                 trust" >> /var/lib/pgsql/pgdata/pg_hba.conf  && \
     echo "listen_addresses = '*'" >> /var/lib/pgsql/pgdata/postgresql.conf && \
-    sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf && \
-    mkdir /tmp/kcdump && \
-    chmod 777 /tmp/kcdump
+    sed -ie 's/^logging_collector/#logging_collector/g' /var/lib/pgsql/pgdata/postgresql.conf 
 
 USER 0
-RUN groupmod -g 1001 postgres && \
-    usermod -u 1001 -g 1001 postgres && \
-    chown -R 1001:1001 /var/lib/pgsql && \
-    chown -R 1001:1001 /run/postgresql && \
-    chown -R 1001:1001 /tmp/kcdump
+RUN find /usr/bin /usr/local/bin/ /bin -type f,l | while read b; do f=`echo $b | sed -e 's;.*/;;g'`; if [[ "$f" =~ ^(bash|sh|dash|ash|zsh|csh|apt|apt-get|dpkg|apk|yum|dnf|rpm|curl|wget|nc|netcat|ncat|socat|telnet|tp|sh|scp|rsync|ping|traceroute|netstat|ss|ip|arp|nmap|ps|top|htop|uname|whoami|id|env|lsof|strace|cpdump|gdb|tar|gzip|bzip2|zip|unzip|awk|grep|find|vi|vim|nano|ed)$ ]]; then rm -f $b; fi; done && \
+    rm -f /usr/bin/sed    
 
 USER postgres
 WORKDIR /var/lib/pgsql
@@ -57,16 +60,13 @@ ENV KCD_TARGETDIR=/tmp/kcdump
 ENV KCD_LOGLEVEL=info
 ENV DUMP_AND_LOAD=false
 
-EXPOSE 5432
+EXPOSE 5432 8000
 
-# miniserve --quiet --hide-version-footer --hide-theme-selector -p 8000 -t "kcdump files" /tmp/kcdump
+ENTRYPOINT ["python3", "/var/lib/pgsql/entrypoint.py"]
 
-ENTRYPOINT \
-    if [ "$DUMP_AND_LOAD" = "true" ]; then \
-        kcdump; \
-        (sleep 5; psql -c "select load_cluster_data('/tmp/kcdump')") & \
-    fi; \
-    python3 -m http.server -d /tmp/kcdump 8000 & \
-    postgres
-
-
+LABEL name="dumpdb" \
+      vendor="Red Hat Adoption LATAM" \
+      version="0.1.0" \
+      release="1" \
+      summary="Utility to dump Kubernetes cluster information into a ephemeral PostgreSQL database" \
+      description="A utility to dump Kubernetes cluster information into a ephemeral PostgreSQL database"

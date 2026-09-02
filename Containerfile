@@ -16,3 +16,10 @@ COPY --from=builder /workspace/kcdump /bin/
 ENV KCD_TARGETDIR=/tmp/kcdump
 
 ENTRYPOINT ["/bin/kcdump"]
+
+LABEL name="kcdump" \
+      vendor="Red Hat Adoption LATAM" \
+      version="0.1.0" \
+      release="1" \
+      summary="Utility to dump Kubernetes cluster information" \
+      description="A utility to dump Kubernetes cluster information"
