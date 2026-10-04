@@ -9,8 +9,8 @@ COPY pkg/ pkg/
 COPY cmd/main.go cmd/main.go
 COPY cmd/pgzip/main.go cmd/pgzip/main.go
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go #&& \
-    # CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o pgzip cmd/pgzip/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go 
+#&& \ CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o pgzip cmd/pgzip/main.go
 
 FROM registry.access.redhat.com/hi/python:3.14-builder
 
