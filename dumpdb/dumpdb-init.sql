@@ -69,7 +69,7 @@ begin
 end;
 $$;
 
-create or replace function load_cluster_data(dir text) returns text
+create function load_cluster_data(dir text) returns text
     language plpgsql
 as
 $$
@@ -96,14 +96,15 @@ begin
     --
     for cdata in
         select 
-            replace(pg_ls_dir, '.json', '') filename,
-            regexp_replace(pg_ls_dir, '^(.+)(?:---hcrcm_id-.+)?\.json$', '\1') cluster,
+            replace(pg_ls_dir, '.json.gz', '') filename,
+            regexp_replace(pg_ls_dir, '^(.+)(?:---hcrcm_id-.+)?\.json\.gz$', '\1') cluster,
             dir || '/' || pg_ls_dir data_file
             from (
-                select * from pg_ls_dir(dir) where pg_ls_dir like '%.json'
+                select * from pg_ls_dir(dir) where pg_ls_dir like '%.json.gz'
             )
     loop
-        execute format('copy cluster (_) from ''%s'';', cdata.data_file);
+        -- execute format('copy cluster (_) from ''%s'';', cdata.data_file);
+        execute format('copy cluster (_) from program ''pgzip -dc %s'';', cdata.data_file);
         
         update cluster set id = cdata.cluster,
                            api_name = 'apiresources',
@@ -280,4 +281,5 @@ begin
 end;
 $$;
 
--- select load_cluster_data('/kcdump');
+alter function load_cluster_data(text) owner to postgres;
+
