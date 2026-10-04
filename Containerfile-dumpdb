@@ -9,8 +9,8 @@ COPY pkg/ pkg/
 COPY cmd/main.go cmd/main.go
 COPY cmd/pgzip/main.go cmd/pgzip/main.go
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go && \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o pgzip cmd/pgzip/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kcdump cmd/main.go #&& \
+    # CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o pgzip cmd/pgzip/main.go
 
 FROM docker.io/svenstaro/miniserve:latest as miniserve
 
@@ -34,7 +34,7 @@ RUN dnf install -y postgresql postgresql-devel postgresql-plpython3 python3-yaml
     chmod -R 777 /tmp/kcdump        
 
 COPY --from=builder /workspace/kcdump /bin/
-COPY --from=builder /workspace/pgzip /bin/
+# COPY --from=builder /workspace/pgzip /bin/
 COPY --from=miniserve /app/miniserve /bin/
 COPY dumpdb/dumpdb-init.sql /var/lib/pgsql/
 COPY dumpdb/entrypoint.py /var/lib/pgsql/

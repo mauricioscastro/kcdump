@@ -2,13 +2,13 @@ package kc
 
 import (
 	"archive/tar"
-	gz "compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coreybutler/go-fsutil"
+	gz "github.com/klauspost/pgzip"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 	"github.com/pieterclaerhout/go-waitgroup"
 	"github.com/rwtodd/Go.Sed/sed"
@@ -955,12 +956,18 @@ func gzip(file string) error {
 	gzipWriter := gz.NewWriter(gzippedFile)
 	defer gzipWriter.Close()
 
+	if err = gzipWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
+		return err
+	}
+
 	_, err = io.Copy(gzipWriter, originalFile)
 	if err != nil {
 		return err
 	}
 
-	gzipWriter.Flush()
+	if err = gzipWriter.Close(); err != nil {
+		return err
+	}
 	os.Remove(file)
 	return nil
 }
