@@ -24,7 +24,7 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 
 `--format` output format. use one of: 'yaml', 'json', 'json_pretty', 'json_lines', 'json_lines_wrapped'. (default "json_lines")
 
-`--gzip` gzip output (default false)
+`--gzip` gzip output (default true)
 
 `--ignore-worker-errors` ignore errors from worker go routines during resources processing. errors will be logged in error level (default true)
 
@@ -67,7 +67,7 @@ This comes from [a operator I am building to pull reports from k8s clusters](htt
 ### How I use it in the operator
 In the operator it is lauched as a Job with the default options for which the command line counterpart would be:
 ```bash
-> kcdump  --split-group-version-kind=false --format=json_lines --tail-log-lines=0 --gzip=false --escapejson=true
+> kcdump  --split-group-version-kind=false --format=json_lines --tail-log-lines=0 --gzip=true --escapejson=true
 ```
 Those are the default options, similar to just calling `> kcdump` . With this, a big gziped json file is created. This big json is later loaded by the [dumpdb](./dumpdb/) container for manipulation with Postgres SQL queries.
 

@@ -113,7 +113,7 @@ func init() {
 // readme.md: go run cmd/main.go -h 2>&1 | grep -v -e Usage -e help -e  "exit status" | sed -e 's/^  *//g' -e 's/, -/,-/g' | cut -d ' ' -f 1,3- | sed -e 's/  */ /g' | sed -E 's/^(-[^ ]+) (.*)$/`\1` \2\n/g' | sed -E 's,/home/.*/.kube/(.*),USER_HOME/.kube/\1,g' | sed -e 's/\*/\\*/g' | sed -e 's/`--sgv/`--sgv, --split-group-version-kind/g' -e 's/`--sns/`--sns, --split-namespaces/g' -e 's/`--xgvk/`--xgvk, --exclude-group-version-kind/g' -e 's/`--xns/`--xns, --exclude-namespace/g'
 
 func main() {
-	pflag.BoolVar(&gzip, "gzip", false, "gzip output")
+	pflag.BoolVar(&gzip, "gzip", true, "gzip output")
 	pflag.BoolVar(&tgz, "tgz", false, "a gziped tar file is created at targetDir level with its contents. will turn off gzip option (default false)")
 	pflag.BoolVar(&prune, "prune", false, "prunes targetDir/name/ after archiving. implies tgz option. if tgz option is not used it does nothing (default false)")
 	pflag.BoolVar(&ns, "printns", false, "print (filtered or not) namespaces list and exit (default false)")
