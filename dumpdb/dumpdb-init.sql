@@ -103,7 +103,8 @@ begin
                 select * from pg_ls_dir(dir) where pg_ls_dir like '%.json.gz'
             )
     loop
-        execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
+        -- execute format('copy cluster (_) from program ''gzip -dc %s'';', cdata.data_file);
+        copy cluster (_) from cdata.data_file;
 
         update cluster set id = cdata.cluster,
                            api_name = 'apiresources',

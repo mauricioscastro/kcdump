@@ -12,8 +12,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kc
 
 FROM docker.io/svenstaro/miniserve:latest as miniserve
 
-FROM reg.mini.dev/bash AS bash
-
 FROM registry.access.redhat.com/hi/python:3.14-builder
 
 USER 0
@@ -54,8 +52,6 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
 USER 0
 RUN find /usr/bin /usr/local/bin/ /bin -type f,l | while read b; do f=`echo $b | sed -e 's;.*/;;g'`; if [[ "$f" =~ ^(bash|sh|dash|ash|zsh|csh|apt|apt-get|dpkg|apk|yum|dnf|rpm|curl|wget|nc|netcat|ncat|socat|telnet|tp|sh|scp|rsync|ping|traceroute|netstat|ss|ip|arp|nmap|ps|top|htop|uname|whoami|id|env|lsof|strace|cpdump|gdb|tar|gzip|bzip2|zip|unzip|awk|grep|find|vi|vim|nano|ed)$ ]]; then rm -f $b; fi; done && \
     rm -f /usr/bin/sed    
-
-COPY --from=bash /usr/bin/gzip /usr/bin/
 
 USER postgres
 WORKDIR /var/lib/pgsql
