@@ -1,4 +1,0 @@
-#!/bin/bash
-# assumes -c -- pgzip -dc /tmp/kcdump/file.json.gz
-file
-/bin/pgzip -dc $5
