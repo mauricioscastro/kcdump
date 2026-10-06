@@ -2,13 +2,13 @@ package kc
 
 import (
 	"archive/tar"
+	gz "compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/coreybutler/go-fsutil"
-	gz "github.com/klauspost/pgzip"
 	"github.com/mauricioscastro/kcdump/pkg/yjq"
 	"github.com/pieterclaerhout/go-waitgroup"
 	"github.com/rwtodd/Go.Sed/sed"
@@ -32,13 +31,25 @@ const (
 	JSON_PRETTY
 )
 
+// read buffer used to feed the gzip writer. small on purpose, compression
+// ratio does not depend on it and it is allocated once per concurrent gzip
+const gzipCopyBufferSize = 32 << 10
+
 var (
 	DefaultCleaningQuery             = `.items = [.items[] | del(.metadata.managedFields) | del(.metadata.uid) | del (.metadata.creationTimestamp) | del (.metadata.generation) | del(.metadata.resourceVersion) | del (.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])] | del(.metadata)`
 	SecretsCleaningQuery             = `with(.items[]; del(.metadata.annotations."openshift.io/token-secret.value") | select(has("data")) | .data[] = "" | select(has("stringData")) | .stringData.[] = "")`
 	OpenshiftOAuthTokenCleaningQuery = `with(.items[]; select(has("authorizeToken")) | .authorizeToken = "")`
 	apiAvailableListQuery            = `with(.items[]; .verbs = (.verbs | to_entries)) | .items[] | select(.available and .verbs[].value == "get") | .name + ";" + .groupVersion + ";" + .namespaced`
 	dumpWorkerErrors                 atomic.Value
+	gzipWriterPool                   = sync.Pool{New: func() any { return gz.NewWriter(io.Discard) }}
+	gzipBufferPool                   = sync.Pool{New: func() any { b := make([]byte, gzipCopyBufferSize); return &b }}
 )
+
+// onlyReader keeps io.CopyBuffer from taking a WriteTo/ReadFrom shortcut that
+// would allocate its own buffer instead of using the pooled one
+type onlyReader struct {
+	io.Reader
+}
 
 func (kc *kc) NsNames() ([]string, error) {
 	r, e := kc.Get("/api/"+kc.Version()+"/namespaces", overrideAcceptWithJson)
@@ -940,6 +951,11 @@ func writeWholeResourceFile(path string, contents string, gz bool, format int, e
 	return nil
 }
 
+// gzip compresses file into file+".gz" and removes the original on success.
+// it is a single stream deflate fed by a small fixed buffer, so the memory
+// used does not grow with the file size and does not multiply by the number
+// of cpus. writer and buffer are pooled because gzip is called from the dump
+// workers in parallel and the deflate state is the expensive part to allocate.
 func gzip(file string) error {
 	originalFile, err := os.Open(file)
 	if err != nil {
@@ -951,21 +967,26 @@ func gzip(file string) error {
 	if err != nil {
 		return err
 	}
-	defer gzippedFile.Close()
 
-	gzipWriter := gz.NewWriter(gzippedFile)
-	defer gzipWriter.Close()
+	gzipWriter := gzipWriterPool.Get().(*gz.Writer)
+	gzipWriter.Reset(gzippedFile)
+	buf := gzipBufferPool.Get().(*[]byte)
 
-	if err = gzipWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
-		return err
+	// onlyReader hides os.File's WriteTo so the pooled buffer is the one used
+	_, err = io.CopyBuffer(gzipWriter, onlyReader{originalFile}, *buf)
+
+	gzipBufferPool.Put(buf)
+	if err == nil {
+		err = gzipWriter.Close()
 	}
+	gzipWriter.Reset(io.Discard) // do not keep the file referenced in the pool
+	gzipWriterPool.Put(gzipWriter)
 
-	_, err = io.Copy(gzipWriter, originalFile)
+	if cerr := gzippedFile.Close(); err == nil {
+		err = cerr
+	}
 	if err != nil {
-		return err
-	}
-
-	if err = gzipWriter.Close(); err != nil {
+		os.Remove(file + ".gz")
 		return err
 	}
 	os.Remove(file)
