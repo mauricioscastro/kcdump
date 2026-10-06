@@ -17,12 +17,17 @@ limitations under the License.
 // gzip compatible command line wrapper around github.com/klauspost/pgzip
 // so (de)compression can be parallelized from outside go code. i.e. from
 // postgres 'copy ... from program ”pgzip -dc file.gz”'
+//
+// postgres always runs 'copy ... from program' through '/bin/sh -c ”...”', so
+// when invoked as 'sh' (argv[0]) this binary stands in for the shell: the
+// command line it was given is assumed to be 'pgzip -dc [file ...]'.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -52,7 +57,13 @@ var (
 )
 
 func main() {
-	files, err := parseArgs(os.Args[1:])
+	args := os.Args[1:]
+	if filepath.Base(os.Args[0]) == "sh" {
+		args = stripSelfCall(shellArgs(args))
+		decompress = true
+		toStdout = true
+	}
+	files, err := parseArgs(args)
 	if err != nil {
 		die(err)
 	}
@@ -64,6 +75,63 @@ func main() {
 			die(err)
 		}
 	}
+}
+
+// shellArgs turns a 'sh -c [--] ”pgzip -dc file.gz”' invocation into the pgzip
+// arguments ”-dc file.gz”. postgres opens the program through popen(3), and
+// glibc's popen puts an end-of-options ”--” between ”-c” and the command, so
+// that separator is skipped when present. the command line is assumed to be a
+// plain pgzip call, so it is only split on blanks, no shell syntax is
+// interpreted, and a leading program name is dropped.
+func shellArgs(args []string) []string {
+	cmd := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] != "-c" {
+			continue
+		}
+		i++
+		if i < len(args) && args[i] == "--" {
+			i++
+		}
+		if i < len(args) {
+			cmd = args[i]
+		}
+		break
+	}
+	words := strings.Fields(cmd)
+	if len(words) > 0 && isSelf(words[0]) {
+		words = words[1:]
+	}
+	return words
+}
+
+// isSelf reports whether word names this program, i.e. is the command name of
+// a 'pgzip ...' or 'gzip ...' command line rather than one of its arguments.
+func isSelf(word string) bool {
+	switch filepath.Base(word) {
+	case "pgzip", "gzip":
+		return true
+	}
+	return false
+}
+
+// stripSelfCall drops any further 'pgzip -dc' left in the arguments, both as
+// an embedded substring and as separate words, so a command line that nests
+// another pgzip call is handled as a single one. arguments left empty by the
+// removal are discarded.
+func stripSelfCall(args []string) []string {
+	out := args[:0]
+	for _, a := range args {
+		if isSelf(a) {
+			continue
+		}
+		a = strings.ReplaceAll(a, "pgzip -dc ", "")
+		if a == "" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 func parseArgs(args []string) ([]string, error) {

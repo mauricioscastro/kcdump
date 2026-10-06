@@ -28,8 +28,6 @@ RUN dnf install -y postgresql postgresql-devel postgresql-plpython3 python3-yaml
     chown -R 999:999 /usr/lib64/pgsql && \
     chown -R 999:999 /var/run/postgresql && \
     chown -R 999:999 /var/lib/pgsql && \
-    chown -R 999:999 /bin/bash && \
-    chmod 500 /bin/bash && \
     mkdir /tmp/kcdump && \
     chmod -R 777 /tmp/kcdump        
 
@@ -54,7 +52,8 @@ RUN initdb --auth=trust --auth-host=trust --auth-local=trust && \
 
 USER 0
 RUN cd /bin && \
-    rm -f sed apt apt-get dpkg apk yum dnf rpm curl wget nc netcat ncat socat telnet tp scp rsync ping traceroute netstat ss ip arp nmap ps top htop uname whoami id env lsof strace cpdump gdb tar bzip2 zip gzip unzip awk grep find vi vim nano ed
+    rm -f sh bash sed apt apt-get dpkg apk yum dnf rpm curl wget nc netcat ncat socat telnet tp scp rsync ping traceroute netstat ss ip arp nmap ps top htop uname whoami id env lsof strace cpdump gdb tar bzip2 zip gzip unzip awk grep find vi vim nano ed  && \
+    ln -s /bin/pgzip /bin/sh
 
 USER postgres
 WORKDIR /var/lib/pgsql
